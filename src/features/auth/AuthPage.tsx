@@ -272,27 +272,6 @@ export const AuthPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Bypass for Instant Testing */}
-          <div className="mt-6 pt-4 border-t border-slate-800/80 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem(
-                  'idforge_demo_user',
-                  JSON.stringify({
-                    id: 'admin-demo',
-                    email: 'admin@college-idforge.com',
-                    fullName: 'College Admin',
-                  })
-                );
-                navigate('/');
-              }}
-              className="text-[11px] font-semibold text-brand-400 hover:text-brand-300 transition-colors"
-            >
-              ⚡ Quick Instant Demo Access (Skip Login)
-            </button>
-          </div>
         </div>
       </div>
     </div>

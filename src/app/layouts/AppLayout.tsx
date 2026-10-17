@@ -36,18 +36,42 @@ export const AppLayout: React.FC = () => {
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function init() {
+      // Check session first (handles OAuth return from Google)
+      await authService.getSession();
       const user = await authService.getCurrentUser();
+
       if (!user) {
-        navigate('/login');
+        if (isMounted) navigate('/login');
         return;
       }
-      setCurrentUser(user);
 
-      const list = await organizationService.getOrganizations();
-      setOrgs(list);
+      if (isMounted) {
+        setCurrentUser(user);
+        const list = await organizationService.getOrganizations();
+        setOrgs(list);
+      }
     }
+
     init();
+
+    const sub = authService.onAuthStateChange(async (user) => {
+      if (!isMounted) return;
+      if (user) {
+        setCurrentUser(user);
+        const list = await organizationService.getOrganizations();
+        setOrgs(list);
+      } else {
+        navigate('/login');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      sub.unsubscribe();
+    };
   }, [navigate]);
 
   const handleOrgChange = (newId: string) => {

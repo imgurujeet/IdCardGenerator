@@ -8,8 +8,6 @@ export interface AuthUser {
   avatarUrl?: string;
 }
 
-const LOCAL_STORAGE_USER_KEY = 'idforge_demo_user';
-
 export const authService = {
   async getSession(): Promise<Session | null> {
     if (isLiveSupabaseConfigured) {
@@ -40,122 +38,64 @@ export const authService = {
       }
     }
 
-    // Fallback demo user
-    const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-    if (localUser) {
-      try {
-        return JSON.parse(localUser);
-      } catch {
-        // ignore
-      }
-    }
-
-    return {
-      id: 'user-0001',
-      email: 'admin@idforge.com',
-      fullName: 'Dr. Sarah Jenkins',
-      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    };
+    return null;
   },
 
   async signUp(email: string, password: string, fullName: string): Promise<{ success: boolean; user?: User; error?: string }> {
-    if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      if (data.user) {
-        localStorage.setItem(
-          LOCAL_STORAGE_USER_KEY,
-          JSON.stringify({
-            id: data.user.id,
-            email: data.user.email,
-            fullName,
-          })
-        );
-      }
-
-      return { success: true, user: data.user || undefined };
+    if (!isLiveSupabaseConfigured) {
+      return { success: false, error: 'Supabase credentials are not configured in .env' };
     }
 
-    // Local demo signup
-    const mockUser: AuthUser = {
-      id: `usr-${Date.now()}`,
+    const { data, error } = await supabase.auth.signUp({
       email,
-      fullName,
-    };
-    localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
-    return { success: true };
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, user: data.user || undefined };
   },
 
   async signInWithPassword(email: string, password: string): Promise<{ success: boolean; error?: string }> {
-    if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      if (data.user) {
-        localStorage.setItem(
-          LOCAL_STORAGE_USER_KEY,
-          JSON.stringify({
-            id: data.user.id,
-            email: data.user.email,
-            fullName: data.user.user_metadata?.full_name || email.split('@')[0],
-          })
-        );
-      }
-
-      return { success: true };
+    if (!isLiveSupabaseConfigured) {
+      return { success: false, error: 'Supabase credentials are not configured in .env' };
     }
 
-    // Local demo login
-    const mockUser: AuthUser = {
-      id: `usr-${Date.now()}`,
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      fullName: email.split('@')[0],
-    };
-    localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
+      password,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
     return { success: true };
   },
 
   async signInWithGoogle(): Promise<{ success: boolean; error?: string }> {
-    if (isLiveSupabaseConfigured) {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
+    if (!isLiveSupabaseConfigured) {
+      return { success: false, error: 'Supabase credentials are not configured in .env' };
     }
 
-    // Local demo
-    const mockUser: AuthUser = {
-      id: 'google-usr-01',
-      email: 'user.google@gmail.com',
-      fullName: 'Google User',
-    };
-    localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
     return { success: true };
   },
 
@@ -167,7 +107,6 @@ export const authService = {
         console.warn('Sign out error:', e);
       }
     }
-    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
   },
 
   onAuthStateChange(callback: (user: AuthUser | null) => void) {
