@@ -12,11 +12,13 @@ import {
   Italic,
   Underline as UnderlineIcon,
   Sparkles,
+  Plus,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { resolveElementText } from '../../../lib/utils';
 import { formService } from '../../../services/form.service';
 import { organizationService } from '../../../services/organization.service';
+import { FormFieldType } from '../../../types/form';
 
 const STANDARD_FIELDS = [
   { key: 'student_name', label: 'Candidate / Student Name' },
@@ -50,6 +52,41 @@ export const PropertiesSidebar: React.FC = () => {
   } = useEditorStore();
 
   const [formFields, setFormFields] = useState<Array<{ key: string; label: string }>>(STANDARD_FIELDS);
+
+  // In-Editor Form Field Creator
+  const [showAddFieldDrawer, setShowAddFieldDrawer] = useState(false);
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [newFieldKey, setNewFieldKey] = useState('');
+  const [newFieldType, setNewFieldType] = useState<FormFieldType>('text');
+  const [newFieldOptions, setNewFieldOptions] = useState('');
+
+  const handleAddNewField = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFieldLabel.trim()) return;
+    const key = (newFieldKey || newFieldLabel).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!key) return;
+
+    if (!formFields.some((f) => f.key === key)) {
+      setFormFields((prev) => [...prev, { key, label: newFieldLabel.trim() }]);
+    }
+
+    if (selectedElem) {
+      const current = (selectedElem as any).content || '';
+      const tag = `{{${key}}}`;
+      const updated = current ? `${current} ${tag}` : tag;
+      updateElement(selectedElem.id, {
+        content: updated,
+        type: 'dynamic-text',
+        fieldKey: (selectedElem as any).fieldKey || key,
+      });
+    }
+
+    setNewFieldLabel('');
+    setNewFieldKey('');
+    setNewFieldType('text');
+    setNewFieldOptions('');
+    setShowAddFieldDrawer(false);
+  };
 
   useEffect(() => {
     async function loadFormFields() {
@@ -285,9 +322,110 @@ export const PropertiesSidebar: React.FC = () => {
                 className="w-full p-2 border border-surface-300 rounded text-xs font-mono bg-white outline-none focus:border-brand-500"
               />
 
-              {/* Dynamic Tag Quick-Insert Chips */}
-              <div className="mt-1.5">
-                <span className="text-[10px] text-surface-500 block mb-1 font-medium">Click to insert form placeholder:</span>
+              {/* Dynamic Tag Quick-Insert Chips & In-Editor Field Addition */}
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-surface-500 font-medium">Click to insert form placeholder:</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddFieldDrawer(!showAddFieldDrawer)}
+                    className="text-[10px] font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{showAddFieldDrawer ? 'Close Field Form' : 'New Form Field'}</span>
+                  </button>
+                </div>
+
+                {/* Collapsible Add Field Drawer */}
+                {showAddFieldDrawer && (
+                  <div className="p-2.5 bg-brand-50/60 rounded-lg border border-brand-200 space-y-2 animate-in fade-in duration-100">
+                    <span className="text-[10px] font-bold text-brand-900 block">Create Extra Form Field</span>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Label (e.g. Session, Blood Group, PIN)"
+                        value={newFieldLabel}
+                        onChange={(e) => {
+                          setNewFieldLabel(e.target.value);
+                          setNewFieldKey(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''));
+                        }}
+                        className="w-full px-2 py-1 text-xs border border-brand-300 rounded bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={newFieldType}
+                        onChange={(e) => {
+                          const t = e.target.value as FormFieldType;
+                          setNewFieldType(t);
+                          if (t === 'select' && !newFieldOptions) {
+                            newFieldOptions || setNewFieldOptions('A+, B+, O+, AB+');
+                          }
+                        }}
+                        className="w-full px-1.5 py-1 text-xs border border-brand-300 rounded bg-white font-medium outline-none"
+                      >
+                        <option value="text">Text Field</option>
+                        <option value="number">Number (Roll No)</option>
+                        <option value="select">Dropdown Choice</option>
+                        <option value="india_address">India Address (API + State/District)</option>
+                        <option value="india_pincode">India PIN Code (API)</option>
+                        <option value="india_state">India State (36 States/UTs)</option>
+                        <option value="india_district">India District (Cascading)</option>
+                        <option value="date">Date of Birth</option>
+                        <option value="textarea">Multi-line Address</option>
+                        <option value="image_upload">Portrait Photo</option>
+                        <option value="phone">Phone / WhatsApp</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="key_name"
+                        value={newFieldKey}
+                        onChange={(e) => setNewFieldKey(e.target.value)}
+                        className="w-full px-2 py-1 text-xs font-mono border border-brand-300 rounded bg-white outline-none"
+                      />
+                    </div>
+
+                    {newFieldType === 'select' && (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          placeholder="Options: A+, B+, O+, AB+ (comma separated)"
+                          value={newFieldOptions}
+                          onChange={(e) => setNewFieldOptions(e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-brand-300 rounded bg-white outline-none"
+                        />
+                        <div className="flex gap-1 text-[9px]">
+                          <button
+                            type="button"
+                            onClick={() => setNewFieldOptions('A+, A-, B+, B-, O+, O-, AB+, AB-')}
+                            className="px-1.5 py-0.5 bg-white border border-brand-200 rounded text-brand-700"
+                          >
+                            Blood Groups
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewFieldOptions('2024-2026, 2023-2025, 2025-2027')}
+                            className="px-1.5 py-0.5 bg-white border border-brand-200 rounded text-brand-700"
+                          >
+                            Sessions
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleAddNewField}
+                      disabled={!newFieldLabel.trim()}
+                      className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                    >
+                      Add & Insert Tag {newFieldKey ? `{{${newFieldKey}}}` : ''}
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
                   {formFields.map((f) => (
                     <button

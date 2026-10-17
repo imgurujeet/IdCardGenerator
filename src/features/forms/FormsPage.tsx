@@ -9,6 +9,7 @@ import {
   Check,
   X,
   Trash2,
+  Palette,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
 import { formService } from '../../services/form.service';
@@ -224,7 +225,15 @@ export const FormsPage: React.FC = () => {
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold rounded-lg text-xs transition-colors"
                     >
                       <Users className="w-3.5 h-3.5" />
-                      <span>View Submissions</span>
+                      <span>Submissions</span>
+                    </button>
+                    <button
+                      onClick={() => navigate(`/editor/new?formId=${form.id}`)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-100 hover:bg-surface-200 text-surface-800 font-semibold rounded-lg text-xs transition-colors border border-surface-200"
+                      title="Design custom ID card template matching this form"
+                    >
+                      <Palette className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Design ID Card</span>
                     </button>
                     <button
                       onClick={() => handleDeleteForm(form.id, form.title)}
@@ -380,14 +389,43 @@ export const FormsPage: React.FC = () => {
                         />
                         <select
                           value={field.type}
-                          onChange={(e) => handleUpdateField(field.id, { type: e.target.value as FormFieldType })}
+                          onChange={(e) => {
+                            const newType = e.target.value as FormFieldType;
+                            const updates: Partial<FormFieldDefinition> = { type: newType };
+                            if (newType === 'india_address') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'Complete Indian Address (API Auto-Detect)';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'address';
+                            } else if (newType === 'india_pincode') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'PIN Code (India Post API)';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'pincode';
+                            } else if (newType === 'india_state') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'State / UT';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'state';
+                            } else if (newType === 'india_district') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'District';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'district';
+                            } else if (newType === 'number') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'Roll Number';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'roll_no';
+                            } else if (newType === 'date') {
+                              if (!field.label || field.label.includes('Field')) updates.label = 'Date of Birth (D.O.B)';
+                              if (!field.key || field.key.startsWith('field_')) updates.key = 'dob';
+                            }
+                            handleUpdateField(field.id, updates);
+                          }}
                           className="px-2 py-1.5 border border-surface-300 rounded text-xs bg-surface-50 text-surface-700 font-medium outline-none"
                         >
                           <option value="text">Single Line Text</option>
-                          <option value="email">Email</option>
-                          <option value="phone">Phone Number</option>
-                          <option value="select">Dropdown Select</option>
-                          <option value="date">Date</option>
+                          <option value="number">Number (Roll No, Reg No)</option>
+                          <option value="select">Dropdown Select (Session, Blood Group)</option>
+                          <option value="india_address">India Address (State, District & PIN Code with API)</option>
+                          <option value="india_pincode">India PIN Code (API Auto-Detect)</option>
+                          <option value="india_state">India State (Dropdown of 36 States/UTs)</option>
+                          <option value="india_district">India District (Cascading with State)</option>
+                          <option value="date">Date (D.O.B, Admission)</option>
+                          <option value="phone">Mobile / Phone Number</option>
+                          <option value="textarea">Full Address (Multi-line)</option>
+                          <option value="email">Email Address</option>
                           <option value="image_upload">Portrait Photo Upload</option>
                         </select>
                         <button
@@ -398,6 +436,97 @@ export const FormsPage: React.FC = () => {
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
+
+                      {/* Dropdown Options Builder for Select fields */}
+                      {field.type === 'select' && (
+                        <div className="p-2.5 bg-brand-50/50 rounded-lg border border-brand-200 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-brand-900">
+                              Dropdown Choices (Comma-Separated)
+                            </span>
+                            <span className="text-[10px] text-brand-600">Quick presets:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const opts = [
+                                  { label: 'A+', value: 'A+' },
+                                  { label: 'B+', value: 'B+' },
+                                  { label: 'O+', value: 'O+' },
+                                  { label: 'AB+', value: 'AB+' },
+                                  { label: 'A-', value: 'A-' },
+                                  { label: 'B-', value: 'B-' },
+                                  { label: 'O-', value: 'O-' },
+                                  { label: 'AB-', value: 'AB-' },
+                                ];
+                                handleUpdateField(field.id, {
+                                  options: opts,
+                                  label: field.label.includes('Field') ? 'Blood Group' : field.label,
+                                  key: field.key.startsWith('field_') ? 'blood_group' : field.key,
+                                });
+                              }}
+                              className="px-2 py-0.5 bg-white border border-brand-300 rounded text-[10px] text-brand-800 hover:bg-brand-100"
+                            >
+                              + Blood Group
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const opts = [
+                                  { label: '2024-2026', value: '2024-2026' },
+                                  { label: '2023-2025', value: '2023-2025' },
+                                  { label: '2025-2027', value: '2025-2027' },
+                                  { label: '2026-2028', value: '2026-2028' },
+                                ];
+                                handleUpdateField(field.id, {
+                                  options: opts,
+                                  label: field.label.includes('Field') ? 'Academic Session' : field.label,
+                                  key: field.key.startsWith('field_') ? 'session' : field.key,
+                                });
+                              }}
+                              className="px-2 py-0.5 bg-white border border-brand-300 rounded text-[10px] text-brand-800 hover:bg-brand-100"
+                            >
+                              + Academic Session
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const opts = [
+                                  { label: 'D.El.Ed', value: 'D.El.Ed' },
+                                  { label: 'B.Ed', value: 'B.Ed' },
+                                  { label: 'B.A', value: 'B.A' },
+                                  { label: 'B.Sc', value: 'B.Sc' },
+                                  { label: 'BCA', value: 'BCA' },
+                                ];
+                                handleUpdateField(field.id, {
+                                  options: opts,
+                                  label: field.label.includes('Field') ? 'Course / Department' : field.label,
+                                  key: field.key.startsWith('field_') ? 'course' : field.key,
+                                });
+                              }}
+                              className="px-2 py-0.5 bg-white border border-brand-300 rounded text-[10px] text-brand-800 hover:bg-brand-100"
+                            >
+                              + Courses
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={field.options?.map((o) => o.label).join(', ') || ''}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const parsed = raw
+                                .split(',')
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                                .map((s) => ({ label: s, value: s }));
+                              handleUpdateField(field.id, { options: parsed });
+                            }}
+                            placeholder="e.g. 2024-2026, 2023-2025, 2025-2027"
+                            className="w-full px-2.5 py-1.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500 font-mono"
+                          />
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-4 text-xs text-surface-600">
                         <label className="flex items-center gap-1.5 cursor-pointer">

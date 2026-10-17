@@ -54,6 +54,24 @@ export function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+export function getDefaultSampleValue(key: string): string {
+  const cleanKey = key.trim().toLowerCase();
+  if (cleanKey.includes('roll')) return '101';
+  if (cleanKey.includes('father')) return 'Dilip Kumar';
+  if (cleanKey.includes('name')) return 'Rohan Sharma';
+  if (cleanKey.includes('blood')) return 'B+';
+  if (cleanKey.includes('session')) return '2024-2026';
+  if (cleanKey.includes('course') || cleanKey.includes('trade')) return 'D.El.Ed';
+  if (cleanKey.includes('pin')) return '803221';
+  if (cleanKey.includes('dob') || cleanKey.includes('birth')) return '15-08-2003';
+  if (cleanKey.includes('mobile') || cleanKey.includes('phone')) return '+91 98765 43210';
+  if (cleanKey.includes('state')) return 'Bihar';
+  if (cleanKey.includes('district')) return 'Patna';
+  if (cleanKey.includes('address') || cleanKey.includes('village')) return 'Barh, Patna, Bihar';
+  if (cleanKey.includes('reg') || cleanKey.includes('id')) return 'REG-2024-089';
+  return cleanKey.replace(/_/g, ' ').toUpperCase();
+}
+
 // Dynamic field interpolator: replaces {{field_name}} with record[field_name]
 export function interpolateString(template: string, data: Record<string, any>, fallback: string = ''): string {
   if (!template) return '';
@@ -65,7 +83,7 @@ export function interpolateString(template: string, data: Record<string, any>, f
     if (val !== undefined && val !== null && String(val).trim() !== '') {
       return String(val);
     }
-    return fallback;
+    return fallback || getDefaultSampleValue(key);
   });
 }
 

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Type,
   Square,
@@ -20,12 +21,20 @@ import {
   Upload,
   Palette,
   FileUp,
+  FileCheck2,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { storageService } from '../../../services/storage.service';
+import { formService } from '../../../services/form.service';
+import { FormEntity } from '../../../types/database';
+import { getDefaultSampleValue } from '../../../lib/utils';
 
 export const ElementsSidebar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'elements' | 'background' | 'layers'>('elements');
+  const [searchParams] = useSearchParams();
+  const linkedFormId = searchParams.get('formId');
+  const [linkedForm, setLinkedForm] = useState<FormEntity | null>(null);
+
   const {
     document: doc,
     activeSide,
@@ -40,6 +49,57 @@ export const ElementsSidebar: React.FC = () => {
     removeBackgroundImage,
     addCustomFont,
   } = useEditorStore();
+
+  useEffect(() => {
+    async function loadForm() {
+      if (linkedFormId) {
+        const f = await formService.getFormById(linkedFormId);
+        setLinkedForm(f);
+      }
+    }
+    loadForm();
+  }, [linkedFormId]);
+
+  const handleAddFormFieldToCanvas = (f: any) => {
+    if (f.type === 'image_upload') {
+      addElement({
+        type: 'portrait',
+        name: f.label || 'Portrait Photo',
+        src: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+        fieldKey: f.key || 'photo_url',
+        x: 15,
+        y: 20,
+        width: 24,
+        height: 30,
+        borderRadius: 2,
+        borderColor: '#4f46e5',
+        borderWidth: 0.5,
+        objectFit: 'cover',
+      });
+    } else {
+      const content = `{{${f.key}}}`;
+      let fallback = getDefaultSampleValue(f.key);
+      if (f.type === 'select' && f.options && f.options.length > 0) {
+        fallback = typeof f.options[0] === 'string' ? f.options[0] : (f.options[0].label || f.options[0].value);
+      }
+
+      addElement({
+        type: 'dynamic-text',
+        name: f.label || f.key,
+        content: content,
+        fieldKey: f.key,
+        fallback: fallback,
+        fontSize: f.key.includes('name') ? 6.5 : 4.5,
+        fontWeight: f.key.includes('name') || f.key.includes('roll') ? 'bold' : 'normal',
+        color: '#0f172a',
+        textAlign: 'center',
+        x: 5,
+        y: 35,
+        width: 44,
+        height: 6,
+      });
+    }
+  };
 
   if (!doc) return null;
 
@@ -104,6 +164,46 @@ export const ElementsSidebar: React.FC = () => {
       {/* Tab 1: Elements Library */}
       {activeTab === 'elements' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Linked Form Schema Fields */}
+          {linkedForm && Array.isArray(linkedForm.fields_schema) && linkedForm.fields_schema.length > 0 && (
+            <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-indigo-950 flex items-center gap-1.5">
+                  <FileCheck2 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Fields from Form:</span>
+                </span>
+                <span className="text-[10px] bg-white px-1.5 py-0.5 rounded font-mono text-indigo-700 font-bold border border-indigo-200">
+                  {linkedForm.fields_schema.length} Fields
+                </span>
+              </div>
+              <p className="text-[10px] text-indigo-700 leading-tight">
+                Click any field below to place it onto the card with dummy preview data!
+              </p>
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                {linkedForm.fields_schema.map((f: any) => (
+                  <button
+                    key={f.id || f.key}
+                    type="button"
+                    onClick={() => handleAddFormFieldToCanvas(f)}
+                    className="w-full flex items-center justify-between p-2 rounded-lg bg-white hover:bg-indigo-100/70 border border-indigo-200 text-left text-xs font-semibold text-surface-800 transition-colors shadow-2xs group"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {f.type === 'image_upload' ? (
+                        <User className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                      ) : (
+                        <Type className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      )}
+                      <span className="truncate">{f.label}</span>
+                    </div>
+                    <span className="text-[10px] text-indigo-600 font-mono group-hover:underline">
+                      +{`{{${f.key}}}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Dynamic Data Fields */}
           <div>
             <div className="flex items-center justify-between mb-2">

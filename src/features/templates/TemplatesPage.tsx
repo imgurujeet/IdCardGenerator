@@ -245,7 +245,19 @@ export const TemplatesPage: React.FC = () => {
                   Open in Canvas <Sliders className="w-3.5 h-3.5 ml-1" />
                 </span>
 
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/editor/${tmpl.id}`);
+                    }}
+                    title="Open editor and generate registration form"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                  >
+                    <Sparkles className="w-3 h-3 text-indigo-600" />
+                    <span>Create Form</span>
+                  </button>
+
                   <button
                     onClick={(e) => handleDelete(tmpl.id, e)}
                     title="Delete Template"

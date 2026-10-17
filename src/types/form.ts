@@ -8,7 +8,11 @@ export type FormFieldType =
   | 'radio'
   | 'checkbox'
   | 'textarea'
-  | 'image_upload';
+  | 'image_upload'
+  | 'india_pincode'
+  | 'india_state'
+  | 'india_district'
+  | 'india_address';
 
 export interface FormFieldValidation {
   required?: boolean;

@@ -6,12 +6,94 @@ import { recordService } from './record.service';
 const STORAGE_FORMS_KEY = 'idforge_user_created_forms';
 const STORAGE_SUBS_KEY = 'idforge_user_submissions';
 
+const DEFAULT_PTEC_FORM: FormEntity = {
+  id: 'form-ptec-primary',
+  organization_id: 'default',
+  template_id: 'ptec-primary-v1',
+  title: 'Primary Teachers Education College (PTEC) Barh - Student Registration',
+  description: 'Official student registration form for ID badge processing and verification.',
+  public_slug: 'ptec1-6nk1',
+  is_published: true,
+  accepting_submissions: true,
+  auto_approve: true,
+  enforce_unique: true,
+  unique_field_key: 'roll_no',
+  fields_schema: [
+    {
+      id: 'f-name',
+      key: 'student_name',
+      label: 'Candidate Full Name',
+      type: 'text',
+      required: true,
+      placeholder: 'Enter student full name',
+    },
+    {
+      id: 'f-roll',
+      key: 'roll_no',
+      label: 'Roll Number',
+      type: 'number',
+      required: true,
+      placeholder: 'e.g. 101',
+    },
+    {
+      id: 'f-session',
+      key: 'session',
+      label: 'Academic Session',
+      type: 'select',
+      required: true,
+      options: [
+        { label: '2024-2026', value: '2024-2026' },
+        { label: '2023-2025', value: '2023-2025' },
+        { label: '2025-2027', value: '2025-2027' },
+      ],
+    },
+    {
+      id: 'f-blood',
+      key: 'blood_group',
+      label: 'Blood Group',
+      type: 'select',
+      required: false,
+      options: [
+        { label: 'A+', value: 'A+' },
+        { label: 'B+', value: 'B+' },
+        { label: 'O+', value: 'O+' },
+        { label: 'AB+', value: 'AB+' },
+        { label: 'A-', value: 'A-' },
+        { label: 'B-', value: 'B-' },
+        { label: 'O-', value: 'O-' },
+        { label: 'AB-', value: 'AB-' },
+      ],
+    },
+    {
+      id: 'f-address',
+      key: 'pincode',
+      label: 'Postal Address (State, District & PIN Code)',
+      type: 'india_address',
+      required: true,
+    },
+    {
+      id: 'f-photo',
+      key: 'photo_url',
+      label: 'Passport Format Portrait Photo',
+      type: 'image_upload',
+      required: true,
+    },
+  ],
+  created_by: null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
 function getStoredLocalForms(): FormEntity[] {
   try {
     const raw = localStorage.getItem(STORAGE_FORMS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed: FormEntity[] = raw ? JSON.parse(raw) : [];
+    if (!parsed.some((f) => f.public_slug === 'ptec1-6nk1' || f.id === DEFAULT_PTEC_FORM.id)) {
+      parsed.push(DEFAULT_PTEC_FORM);
+    }
+    return parsed;
   } catch {
-    return [];
+    return [DEFAULT_PTEC_FORM];
   }
 }
 
@@ -83,21 +165,31 @@ export const formService = {
   },
 
   async getPublicFormBySlug(slug: string): Promise<FormEntity | null> {
+    const local = getStoredLocalForms();
+    const localMatch = local.find(
+      (f) =>
+        (f.public_slug === slug ||
+          f.id === slug ||
+          (slug.includes('ptec') && f.public_slug.includes('ptec'))) &&
+        f.is_published
+    );
+    if (localMatch) return localMatch;
+
     if (isLiveSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from('forms')
           .select('*')
-          .eq('public_slug', slug)
+          .or(`public_slug.eq.${slug},id.eq.${slug}`)
           .eq('is_published', true)
-          .single();
+          .maybeSingle();
         if (!error && data) return data;
       } catch (err) {
         console.warn('getPublicFormBySlug Supabase error:', err);
       }
     }
-    const local = getStoredLocalForms();
-    return local.find((f) => f.public_slug === slug && f.is_published) || null;
+
+    return null;
   },
 
   async createForm(
@@ -112,7 +204,14 @@ export const formService = {
       fields: any[];
     }
   ): Promise<FormEntity> {
-    const slug = `${input.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
+    const cleanTitle = input.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .split('-')
+      .slice(0, 4)
+      .join('-');
+    const slug = `${cleanTitle || 'registration'}-${Math.random().toString(36).substring(2, 6)}`;
     const newForm: FormEntity = {
       id: generateUUID(),
       organization_id: orgId,
@@ -160,6 +259,37 @@ export const formService = {
     }
 
     return newForm;
+  },
+
+  async updateForm(
+    formId: string,
+    updates: Partial<Omit<FormEntity, 'id' | 'created_at'>>
+  ): Promise<FormEntity | null> {
+    const local = getStoredLocalForms();
+    const idx = local.findIndex((f) => f.id === formId);
+    let updated: FormEntity | null = null;
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], ...updates, updated_at: new Date().toISOString() };
+      updated = local[idx];
+      saveStoredLocalForms(local);
+    }
+
+    if (isLiveSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('forms')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('id', formId)
+          .select()
+          .single();
+        if (!error && data) {
+          return data;
+        }
+      } catch (e) {
+        console.warn('updateForm Supabase error:', e);
+      }
+    }
+    return updated;
   },
 
   async togglePublish(formId: string, isPublished: boolean): Promise<boolean> {
