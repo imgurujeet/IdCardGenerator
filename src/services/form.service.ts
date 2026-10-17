@@ -3,42 +3,101 @@ import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/utils';
 import { recordService } from './record.service';
 
-let localForms: FormEntity[] = [];
-let localSubmissions: FormSubmissionEntity[] = [];
+const STORAGE_FORMS_KEY = 'idforge_user_created_forms';
+const STORAGE_SUBS_KEY = 'idforge_user_submissions';
+
+function getStoredLocalForms(): FormEntity[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_FORMS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLocalForms(list: FormEntity[]) {
+  try {
+    localStorage.setItem(STORAGE_FORMS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save forms to localStorage:', e);
+  }
+}
+
+function getStoredLocalSubmissions(): FormSubmissionEntity[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_SUBS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLocalSubmissions(list: FormSubmissionEntity[]) {
+  try {
+    localStorage.setItem(STORAGE_SUBS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save submissions to localStorage:', e);
+  }
+}
 
 export const formService = {
   async getForms(orgId: string): Promise<FormEntity[]> {
+    const local = getStoredLocalForms().filter((f) => f.organization_id === orgId);
+
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('forms')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false });
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase
+          .from('forms')
+          .select('*')
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          const combined = [...data];
+          for (const l of local) {
+            if (!combined.some((c) => c.id === l.id || c.public_slug === l.public_slug)) {
+              combined.push(l);
+            }
+          }
+          return combined;
+        }
+      } catch (err) {
+        console.warn('Failed to query Supabase forms:', err);
+      }
     }
-    return localForms.filter((f) => f.organization_id === orgId);
+
+    return local;
   },
 
   async getFormById(formId: string): Promise<FormEntity | null> {
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('forms').select('*').eq('id', formId).single();
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase.from('forms').select('*').eq('id', formId).single();
+        if (!error && data) return data;
+      } catch (e) {
+        console.warn('getFormById Supabase error:', e);
+      }
     }
-    return localForms.find((f) => f.id === formId) || null;
+    const local = getStoredLocalForms();
+    return local.find((f) => f.id === formId) || null;
   },
 
   async getPublicFormBySlug(slug: string): Promise<FormEntity | null> {
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('forms')
-        .select('*')
-        .eq('public_slug', slug)
-        .eq('is_published', true)
-        .eq('accepting_submissions', true)
-        .single();
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase
+          .from('forms')
+          .select('*')
+          .eq('public_slug', slug)
+          .eq('is_published', true)
+          .single();
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('getPublicFormBySlug Supabase error:', err);
+      }
     }
-    return localForms.find((f) => f.public_slug === slug && f.is_published && f.accepting_submissions) || null;
+    const local = getStoredLocalForms();
+    return local.find((f) => f.public_slug === slug && f.is_published) || null;
   },
 
   async createForm(
@@ -72,15 +131,34 @@ export const formService = {
       updated_at: new Date().toISOString(),
     };
 
+    // Save to localStorage immediately so it is available across all browser tabs
+    const local = getStoredLocalForms().filter((f) => f.id !== newForm.id && f.public_slug !== newForm.public_slug);
+    saveStoredLocalForms([newForm, ...local]);
+
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('forms').insert([newForm]).select().single();
-      if (!error && data) {
-        localForms.unshift(data);
-        return data;
+      try {
+        const { data, error } = await supabase.from('forms').insert([newForm]).select().single();
+        if (!error && data) {
+          const updated = [data, ...local.filter((f) => f.id !== data.id)];
+          saveStoredLocalForms(updated);
+          return data;
+        } else if (error) {
+          console.warn('Supabase extended form insert warning, attempting base schema:', error.message);
+          // Fallback if extended columns are not yet in Supabase table
+          const { auto_approve, enforce_unique, unique_field_key, ...baseForm } = newForm as any;
+          const { data: bData, error: bError } = await supabase.from('forms').insert([baseForm]).select().single();
+          if (!bError && bData) {
+            const merged = { ...newForm, ...bData };
+            const updated = [merged, ...local.filter((f) => f.id !== merged.id)];
+            saveStoredLocalForms(updated);
+            return merged;
+          }
+        }
+      } catch (insertEx) {
+        console.warn('Direct Supabase form insert exception:', insertEx);
       }
     }
 
-    localForms.unshift(newForm);
     return newForm;
   },
 
@@ -88,35 +166,30 @@ export const formService = {
     if (isLiveSupabaseConfigured) {
       await supabase.from('forms').update({ is_published: isPublished }).eq('id', formId);
     }
-    const form = localForms.find((f) => f.id === formId);
+    const local = getStoredLocalForms();
+    const form = local.find((f) => f.id === formId);
     if (form) {
       form.is_published = isPublished;
       form.updated_at = new Date().toISOString();
+      saveStoredLocalForms(local);
       return true;
     }
     return false;
   },
 
   async submitPublicResponse(slug: string, data: Record<string, any>): Promise<{ success: boolean; submissionId?: string; error?: string }> {
-    if (isLiveSupabaseConfigured) {
-      const { data: rpcRes, error } = await supabase.rpc('submit_public_form', {
-        p_slug: slug,
-        p_data: data,
-      });
-      if (error) return { success: false, error: error.message };
-      return { success: true, submissionId: rpcRes.submission_id };
-    }
-
-    const form = localForms.find((f) => f.public_slug === slug && f.is_published && f.accepting_submissions);
-    if (!form) {
+    const form = await this.getPublicFormBySlug(slug);
+    if (!form || !form.accepting_submissions) {
       return { success: false, error: 'Form is not active or no longer accepting responses.' };
     }
+
+    const localSubs = getStoredLocalSubmissions();
 
     // Check duplicate if enforce_unique is enabled
     if (form.enforce_unique && form.unique_field_key) {
       const uniqueVal = String(data[form.unique_field_key] || '').trim().toLowerCase();
       if (uniqueVal) {
-        const isDuplicate = localSubmissions.some((s) => {
+        const isDuplicate = localSubs.some((s) => {
           if (s.form_id !== form.id) return false;
           const val = String(s.data[form.unique_field_key!] || '').trim().toLowerCase();
           return val === uniqueVal;
@@ -125,7 +198,7 @@ export const formService = {
         if (isDuplicate) {
           return {
             success: false,
-            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Only one submission is permitted per user.`,
+            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Only one submission is permitted per student.`,
           };
         }
       }
@@ -175,20 +248,46 @@ export const formService = {
       updated_at: new Date().toISOString(),
     };
 
-    localSubmissions.unshift(newSub);
+    saveStoredLocalSubmissions([newSub, ...localSubs]);
+
+    if (isLiveSupabaseConfigured) {
+      try {
+        const { error: subErr } = await supabase.from('form_submissions').insert([newSub]);
+        if (subErr) {
+          console.warn('Supabase form_submissions insert error:', subErr.message);
+        }
+      } catch (e) {
+        console.warn('Supabase form submission exception:', e);
+      }
+    }
+
     return { success: true, submissionId: subId };
   },
 
   async getSubmissions(formId: string): Promise<FormSubmissionEntity[]> {
+    const local = getStoredLocalSubmissions().filter((s) => s.form_id === formId);
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('form_submissions')
-        .select('*')
-        .eq('form_id', formId)
-        .order('created_at', { ascending: false });
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase
+          .from('form_submissions')
+          .select('*')
+          .eq('form_id', formId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          const combined = [...data];
+          for (const l of local) {
+            if (!combined.some((c) => c.id === l.id)) {
+              combined.push(l);
+            }
+          }
+          return combined;
+        }
+      } catch (err) {
+        console.warn('Failed to query Supabase submissions:', err);
+      }
     }
-    return localSubmissions.filter((s) => s.form_id === formId);
+    return local;
   },
 
   async updateSubmissionStatus(
@@ -196,7 +295,8 @@ export const formService = {
     status: 'approved' | 'rejected' | 'under_review',
     convertToRecord: boolean = true
   ): Promise<boolean> {
-    const sub = localSubmissions.find((s) => s.id === submissionId);
+    const local = getStoredLocalSubmissions();
+    const sub = local.find((s) => s.id === submissionId);
     if (!sub) return false;
 
     sub.status = status;
@@ -225,11 +325,17 @@ export const formService = {
       sub.record_id = record.id;
     }
 
+    saveStoredLocalSubmissions(local);
+
     if (isLiveSupabaseConfigured) {
-      await supabase
-        .from('form_submissions')
-        .update({ status, record_id: sub.record_id, updated_at: sub.updated_at })
-        .eq('id', submissionId);
+      try {
+        await supabase
+          .from('form_submissions')
+          .update({ status, record_id: sub.record_id, updated_at: sub.updated_at })
+          .eq('id', submissionId);
+      } catch (e) {
+        console.warn('updateSubmissionStatus Supabase error:', e);
+      }
     }
 
     return true;

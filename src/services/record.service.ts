@@ -3,30 +3,59 @@ import { RecordFilterOptions, CSVColumnMapping, CSVImportResult } from '../types
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/utils';
 
-let localRecords: RecordEntity[] = [];
+const STORAGE_RECORDS_KEY = 'idforge_user_created_records';
+
+function getStoredLocalRecords(): RecordEntity[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_RECORDS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLocalRecords(list: RecordEntity[]) {
+  try {
+    localStorage.setItem(STORAGE_RECORDS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save records to localStorage:', e);
+  }
+}
 
 export const recordService = {
   async getRecords(orgId: string, options: RecordFilterOptions = {}): Promise<{ records: RecordEntity[]; total: number }> {
+    const local = getStoredLocalRecords().filter((r) => r.organization_id === orgId);
+
     if (isLiveSupabaseConfigured) {
-      let query = supabase.from('records').select('*', { count: 'exact' }).eq('organization_id', orgId);
+      try {
+        let query = supabase.from('records').select('*', { count: 'exact' }).eq('organization_id', orgId);
 
-      if (options.status && options.status !== 'all') {
-        query = query.eq('status', options.status);
-      }
-      if (options.source && options.source !== 'all') {
-        query = query.eq('source', options.source);
-      }
-      if (options.search) {
-        query = query.or(`full_name.ilike.%${options.search}%,identifier.ilike.%${options.search}%`);
-      }
+        if (options.status && options.status !== 'all') {
+          query = query.eq('status', options.status);
+        }
+        if (options.source && options.source !== 'all') {
+          query = query.eq('source', options.source);
+        }
+        if (options.search) {
+          query = query.or(`full_name.ilike.%${options.search}%,identifier.ilike.%${options.search}%`);
+        }
 
-      const { data, count, error } = await query.order('created_at', { ascending: false });
-      if (!error && data) {
-        return { records: data, total: count || data.length };
+        const { data, count, error } = await query.order('created_at', { ascending: false });
+        if (!error && data) {
+          const combined = [...data];
+          for (const l of local) {
+            if (!combined.some((c) => c.id === l.id || c.identifier === l.identifier)) {
+              combined.push(l);
+            }
+          }
+          return { records: combined, total: count || combined.length };
+        }
+      } catch (err) {
+        console.warn('Failed to query Supabase records:', err);
       }
     }
 
-    let items = localRecords.filter((r) => r.organization_id === orgId);
+    let items = [...local];
 
     if (options.status && options.status !== 'all') {
       items = items.filter((r) => r.status === options.status);
@@ -46,10 +75,15 @@ export const recordService = {
 
   async getRecordById(recordId: string): Promise<RecordEntity | null> {
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('records').select('*').eq('id', recordId).single();
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase.from('records').select('*').eq('id', recordId).single();
+        if (!error && data) return data;
+      } catch (e) {
+        console.warn('getRecordById error:', e);
+      }
     }
-    return localRecords.find((r) => r.id === recordId) || null;
+    const local = getStoredLocalRecords();
+    return local.find((r) => r.id === recordId) || null;
   },
 
   async createRecord(
@@ -75,15 +109,22 @@ export const recordService = {
       updated_at: new Date().toISOString(),
     };
 
+    const local = getStoredLocalRecords().filter((r) => r.id !== newRecord.id);
+    saveStoredLocalRecords([newRecord, ...local]);
+
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('records').insert([newRecord]).select().single();
-      if (!error && data) {
-        localRecords.unshift(data);
-        return data;
+      try {
+        const { data, error } = await supabase.from('records').insert([newRecord]).select().single();
+        if (!error && data) {
+          const updated = [data, ...local.filter((r) => r.id !== data.id)];
+          saveStoredLocalRecords(updated);
+          return data;
+        }
+      } catch (e) {
+        console.warn('Supabase createRecord exception:', e);
       }
     }
 
-    localRecords.unshift(newRecord);
     return newRecord;
   },
 
@@ -98,14 +139,16 @@ export const recordService = {
       if (!error && data) return data;
     }
 
-    const index = localRecords.findIndex((r) => r.id === recordId);
+    const local = getStoredLocalRecords();
+    const index = local.findIndex((r) => r.id === recordId);
     if (index === -1) return null;
-    localRecords[index] = {
-      ...localRecords[index],
+    local[index] = {
+      ...local[index],
       ...updates,
       updated_at: new Date().toISOString(),
     };
-    return localRecords[index];
+    saveStoredLocalRecords(local);
+    return local[index];
   },
 
   async updateRecordStatus(recordId: string, status: 'approved' | 'rejected' | 'pending' | 'archived'): Promise<boolean> {
@@ -200,19 +243,30 @@ export const recordService = {
       result.successful++;
     }
 
+    const currentLocal = getStoredLocalRecords();
+    saveStoredLocalRecords([...newRecordsToInsert, ...currentLocal]);
+
     if (isLiveSupabaseConfigured && newRecordsToInsert.length > 0) {
-      await supabase.from('records').insert(newRecordsToInsert);
+      try {
+        await supabase.from('records').insert(newRecordsToInsert);
+      } catch (e) {
+        console.warn('Supabase CSV import insert exception:', e);
+      }
     }
 
-    localRecords.unshift(...newRecordsToInsert);
     return result;
   },
 
   async deleteRecord(recordId: string): Promise<boolean> {
     if (isLiveSupabaseConfigured) {
-      await supabase.from('records').delete().eq('id', recordId);
+      try {
+        await supabase.from('records').delete().eq('id', recordId);
+      } catch (e) {
+        console.warn('Supabase deleteRecord exception:', e);
+      }
     }
-    localRecords = localRecords.filter((r) => r.id !== recordId);
+    const filtered = getStoredLocalRecords().filter((r) => r.id !== recordId);
+    saveStoredLocalRecords(filtered);
     return true;
   },
 };

@@ -288,13 +288,20 @@ CREATE TABLE IF NOT EXISTS public.forms (
     title TEXT NOT NULL,
     description TEXT,
     public_slug TEXT UNIQUE NOT NULL,
-    is_published BOOLEAN NOT NULL DEFAULT false,
+    is_published BOOLEAN NOT NULL DEFAULT true,
     accepting_submissions BOOLEAN NOT NULL DEFAULT true,
+    auto_approve BOOLEAN NOT NULL DEFAULT false,
+    enforce_unique BOOLEAN NOT NULL DEFAULT false,
+    unique_field_key TEXT DEFAULT 'mobile',
     fields_schema JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+ALTER TABLE public.forms ADD COLUMN IF NOT EXISTS auto_approve BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.forms ADD COLUMN IF NOT EXISTS enforce_unique BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.forms ADD COLUMN IF NOT EXISTS unique_field_key TEXT DEFAULT 'mobile';
 
 CREATE INDEX IF NOT EXISTS idx_forms_org ON public.forms(organization_id);
 CREATE INDEX IF NOT EXISTS idx_forms_slug ON public.forms(public_slug);
