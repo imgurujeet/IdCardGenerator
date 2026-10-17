@@ -1,6 +1,7 @@
 -- ==============================================================================
 -- IDForge Database Schema — Multi-Tenant Architecture & Security
 -- Migration: 20261017000001_initial_schema.sql
+-- Idempotent script: Safe to run repeatedly in Supabase SQL Editor
 -- ==============================================================================
 
 -- Enable UUID extension
@@ -21,14 +22,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can view profiles" ON public.profiles;
 CREATE POLICY "Authenticated users can view profiles"
     ON public.profiles FOR SELECT
     USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
     ON public.profiles FOR UPDATE
     USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 CREATE POLICY "Users can insert their own profile"
     ON public.profiles FOR INSERT
     WITH CHECK (auth.uid() = id);
@@ -118,23 +122,28 @@ AS $$
 $$;
 
 -- RLS: Organizations
+DROP POLICY IF EXISTS "Users can view organizations they belong to" ON public.organizations;
 CREATE POLICY "Users can view organizations they belong to"
     ON public.organizations FOR SELECT
     USING (public.check_user_in_org(id));
 
+DROP POLICY IF EXISTS "Authenticated users can create an organization" ON public.organizations;
 CREATE POLICY "Authenticated users can create an organization"
     ON public.organizations FOR INSERT
     WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Admins and Owners can update their organization" ON public.organizations;
 CREATE POLICY "Admins and Owners can update their organization"
     ON public.organizations FOR UPDATE
     USING (public.check_user_role(id, ARRAY['owner', 'admin']));
 
 -- RLS: Organization Members
+DROP POLICY IF EXISTS "Users can view members of their organization" ON public.organization_members;
 CREATE POLICY "Users can view members of their organization"
     ON public.organization_members FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Users can add themselves as owner or admins can manage members" ON public.organization_members;
 CREATE POLICY "Users can add themselves as owner or admins can manage members"
     ON public.organization_members FOR INSERT
     WITH CHECK (
@@ -142,10 +151,12 @@ CREATE POLICY "Users can add themselves as owner or admins can manage members"
         public.check_user_role(organization_id, ARRAY['owner', 'admin'])
     );
 
+DROP POLICY IF EXISTS "Admins and Owners can update member roles" ON public.organization_members;
 CREATE POLICY "Admins and Owners can update member roles"
     ON public.organization_members FOR UPDATE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
 
+DROP POLICY IF EXISTS "Admins and Owners can remove members" ON public.organization_members;
 CREATE POLICY "Admins and Owners can remove members"
     ON public.organization_members FOR DELETE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
@@ -228,23 +239,28 @@ CREATE INDEX IF NOT EXISTS idx_template_versions_template ON public.template_ver
 ALTER TABLE public.template_versions ENABLE ROW LEVEL SECURITY;
 
 -- RLS: Templates
+DROP POLICY IF EXISTS "Org members can view templates" ON public.templates;
 CREATE POLICY "Org members can view templates"
     ON public.templates FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Designers, Admins, Owners can create templates" ON public.templates;
 CREATE POLICY "Designers, Admins, Owners can create templates"
     ON public.templates FOR INSERT
     WITH CHECK (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'designer']));
 
+DROP POLICY IF EXISTS "Designers, Admins, Owners can update templates" ON public.templates;
 CREATE POLICY "Designers, Admins, Owners can update templates"
     ON public.templates FOR UPDATE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'designer']));
 
+DROP POLICY IF EXISTS "Admins and Owners can delete templates" ON public.templates;
 CREATE POLICY "Admins and Owners can delete templates"
     ON public.templates FOR DELETE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
 
 -- RLS: Template Versions
+DROP POLICY IF EXISTS "Org members can view template versions" ON public.template_versions;
 CREATE POLICY "Org members can view template versions"
     ON public.template_versions FOR SELECT
     USING (EXISTS (
@@ -253,6 +269,7 @@ CREATE POLICY "Org members can view template versions"
           AND public.check_user_in_org(t.organization_id)
     ));
 
+DROP POLICY IF EXISTS "Designers, Admins, Owners can save template versions" ON public.template_versions;
 CREATE POLICY "Designers, Admins, Owners can save template versions"
     ON public.template_versions FOR INSERT
     WITH CHECK (EXISTS (
@@ -300,23 +317,28 @@ CREATE INDEX IF NOT EXISTS idx_submissions_form ON public.form_submissions(form_
 ALTER TABLE public.form_submissions ENABLE ROW LEVEL SECURITY;
 
 -- RLS: Forms (Org members manage, unauthenticated can view if published)
+DROP POLICY IF EXISTS "Org members can view forms" ON public.forms;
 CREATE POLICY "Org members can view forms"
     ON public.forms FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Public can view published forms" ON public.forms;
 CREATE POLICY "Public can view published forms"
     ON public.forms FOR SELECT
     USING (is_published = true AND accepting_submissions = true);
 
+DROP POLICY IF EXISTS "Designers, Admins, Owners can create/modify forms" ON public.forms;
 CREATE POLICY "Designers, Admins, Owners can create/modify forms"
     ON public.forms FOR ALL
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'designer']));
 
 -- RLS: Form Submissions
+DROP POLICY IF EXISTS "Org members can view submissions" ON public.form_submissions;
 CREATE POLICY "Org members can view submissions"
     ON public.form_submissions FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Data Operators, Admins, Owners can update submission status" ON public.form_submissions;
 CREATE POLICY "Data Operators, Admins, Owners can update submission status"
     ON public.form_submissions FOR UPDATE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
@@ -380,10 +402,12 @@ CREATE INDEX IF NOT EXISTS idx_records_org ON public.records(organization_id);
 CREATE INDEX IF NOT EXISTS idx_records_identifier ON public.records(organization_id, identifier);
 ALTER TABLE public.records ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view records" ON public.records;
 CREATE POLICY "Org members can view records"
     ON public.records FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Data Operators, Admins, Owners can manage records" ON public.records;
 CREATE POLICY "Data Operators, Admins, Owners can manage records"
     ON public.records FOR ALL
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
@@ -406,10 +430,12 @@ CREATE TABLE IF NOT EXISTS public.record_import_jobs (
 
 ALTER TABLE public.record_import_jobs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view import jobs" ON public.record_import_jobs;
 CREATE POLICY "Org members can view import jobs"
     ON public.record_import_jobs FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Data Operators, Admins, Owners can create import jobs" ON public.record_import_jobs;
 CREATE POLICY "Data Operators, Admins, Owners can create import jobs"
     ON public.record_import_jobs FOR INSERT
     WITH CHECK (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
@@ -436,10 +462,12 @@ CREATE TABLE IF NOT EXISTS public.generation_jobs (
 CREATE INDEX IF NOT EXISTS idx_gen_jobs_org ON public.generation_jobs(organization_id);
 ALTER TABLE public.generation_jobs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view generation jobs" ON public.generation_jobs;
 CREATE POLICY "Org members can view generation jobs"
     ON public.generation_jobs FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Data Operators, Admins, Owners can trigger generation" ON public.generation_jobs;
 CREATE POLICY "Data Operators, Admins, Owners can trigger generation"
     ON public.generation_jobs FOR ALL
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
@@ -461,10 +489,12 @@ CREATE TABLE IF NOT EXISTS public.assets (
 
 ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view assets" ON public.assets;
 CREATE POLICY "Org members can view assets"
     ON public.assets FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Designers, Admins, Owners can manage assets" ON public.assets;
 CREATE POLICY "Designers, Admins, Owners can manage assets"
     ON public.assets FOR ALL
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'designer']));
@@ -486,10 +516,12 @@ CREATE TABLE IF NOT EXISTS public.template_requests (
 
 ALTER TABLE public.template_requests ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Org members can view their template requests" ON public.template_requests;
 CREATE POLICY "Org members can view their template requests"
     ON public.template_requests FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
+DROP POLICY IF EXISTS "Org members can create template requests" ON public.template_requests;
 CREATE POLICY "Org members can create template requests"
     ON public.template_requests FOR INSERT
     WITH CHECK (public.check_user_in_org(organization_id));
@@ -504,19 +536,23 @@ VALUES
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Allow public read access for portraits and card assets so cards and exports render cleanly
+DROP POLICY IF EXISTS "Public Read Portraits" ON storage.objects;
 CREATE POLICY "Public Read Portraits"
     ON storage.objects FOR SELECT
     USING (bucket_id = 'portraits');
 
+DROP POLICY IF EXISTS "Public Read ID Card Assets" ON storage.objects;
 CREATE POLICY "Public Read ID Card Assets"
     ON storage.objects FOR SELECT
     USING (bucket_id = 'id-card-assets');
 
 -- Allow portrait uploads (students submitting public forms and editors uploading imagery)
+DROP POLICY IF EXISTS "Allow Uploads To Portraits" ON storage.objects;
 CREATE POLICY "Allow Uploads To Portraits"
     ON storage.objects FOR INSERT
     WITH CHECK (bucket_id IN ('portraits', 'id-card-assets'));
 
+DROP POLICY IF EXISTS "Allow Updates To Portraits" ON storage.objects;
 CREATE POLICY "Allow Updates To Portraits"
     ON storage.objects FOR UPDATE
     USING (bucket_id IN ('portraits', 'id-card-assets'));
