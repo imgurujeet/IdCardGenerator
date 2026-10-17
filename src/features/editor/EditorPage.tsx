@@ -7,12 +7,14 @@ import { EditorToolbar } from './components/EditorToolbar';
 import { ElementsSidebar } from './components/ElementsSidebar';
 import { CanvasViewport } from './canvas/CanvasViewport';
 import { PropertiesSidebar } from './components/PropertiesSidebar';
-import { OAKWOOD_TEMPLATE_DOC } from '../../services/mockData';
+import { organizationService } from '../../services/organization.service';
+import { recordService } from '../../services/record.service';
+import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
 
 export const EditorPage: React.FC = () => {
   const { templateId } = useParams<{ templateId: string }>();
   const navigate = useNavigate();
-  const { setDocument, document: doc } = useEditorStore();
+  const { setDocument, setAvailableSampleRecords, document: doc } = useEditorStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,15 +22,23 @@ export const EditorPage: React.FC = () => {
     async function loadTemplate() {
       try {
         setLoading(true);
+        const orgId = organizationService.getActiveOrgId();
+        
+        // Load real college records for live preview in canvas toolbar
+        const recRes = await recordService.getRecords(orgId);
+        if (recRes.records && recRes.records.length > 0) {
+          setAvailableSampleRecords(recRes.records.map((r) => r.data));
+        }
+
         if (templateId && templateId !== 'new') {
           const res = await templateService.getTemplateById(templateId);
           if (res && res.activeVersion) {
             setDocument(res.activeVersion.design_data);
           } else {
-            setDocument(OAKWOOD_TEMPLATE_DOC);
+            setDocument(PTEC_TEMPLATE_DOC);
           }
         } else {
-          setDocument(OAKWOOD_TEMPLATE_DOC);
+          setDocument(PTEC_TEMPLATE_DOC);
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load template.');
@@ -38,7 +48,7 @@ export const EditorPage: React.FC = () => {
     }
 
     loadTemplate();
-  }, [templateId, setDocument]);
+  }, [templateId, setDocument, setAvailableSampleRecords]);
 
   if (loading) {
     return (

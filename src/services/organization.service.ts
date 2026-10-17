@@ -1,104 +1,183 @@
 import { Organization, OrganizationMember } from '../types/database';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
-import { DEMO_ORGANIZATIONS } from './mockData';
+import { generateUUID } from '../lib/utils';
 
-// Local reactive cache for non-live demo mode
-let localOrgs = [...DEMO_ORGANIZATIONS];
-let activeOrgId = localOrgs[0].id;
+const STORAGE_CUSTOM_ORGS_KEY = 'idforge_user_created_orgs';
+const STORAGE_ACTIVE_ORG_KEY = 'idforge_active_org_id';
+
+function getStoredLocalOrgs(): Organization[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_CUSTOM_ORGS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLocalOrgs(list: Organization[]) {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_ORGS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save orgs to localStorage:', e);
+  }
+}
 
 export const organizationService = {
   getActiveOrgId(): string {
-    const saved = localStorage.getItem('idforge_active_org_id');
-    if (saved && localOrgs.some((o) => o.id === saved)) {
-      activeOrgId = saved;
-    }
-    return activeOrgId;
+    const saved = localStorage.getItem(STORAGE_ACTIVE_ORG_KEY);
+    if (saved) return saved;
+    const list = getStoredLocalOrgs();
+    return list.length > 0 ? list[0].id : '';
   },
 
   setActiveOrgId(id: string) {
-    activeOrgId = id;
-    localStorage.setItem('idforge_active_org_id', id);
+    localStorage.setItem(STORAGE_ACTIVE_ORG_KEY, id);
   },
 
   async getOrganizations(): Promise<Organization[]> {
+    const local = getStoredLocalOrgs();
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('organizations').select('*').order('name');
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          // Merge Supabase orgs and local orgs seamlessly, deduplicated by ID
+          const combined = [...data];
+          for (const l of local) {
+            if (!combined.some((c) => c.id === l.id || c.name.toLowerCase() === l.name.toLowerCase())) {
+              combined.push(l);
+            }
+          }
+          return combined;
+        }
+      } catch (err) {
+        console.warn('Failed to query Supabase organizations:', err);
+      }
     }
-    return [...localOrgs];
+
+    return local;
   },
 
   async getOrganizationById(id: string): Promise<Organization | null> {
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('organizations').select('*').eq('id', id).single();
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase.from('organizations').select('*').eq('id', id).single();
+        if (!error && data) return data;
+      } catch (e) {
+        console.warn('getOrganizationById error:', e);
+      }
     }
-    return localOrgs.find((o) => o.id === id) || null;
+
+    const localList = getStoredLocalOrgs();
+    return localList.find((o) => o.id === id) || null;
   },
 
   async createOrganization(input: { name: string; industry?: string }): Promise<Organization> {
-    const newOrg: Organization = {
-      id: `org-${Date.now()}`,
+    const slug = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
+
+    if (isLiveSupabaseConfigured) {
+      // 1. Try atomic database RPC function first
+      try {
+        const { data: rpcOrg, error: rpcError } = await supabase.rpc('create_organization', {
+          p_name: input.name,
+          p_industry: input.industry || 'College',
+        });
+
+        if (!rpcError && rpcOrg) {
+          const org: Organization = rpcOrg;
+          this.setActiveOrgId(org.id);
+          // Also save in local cache for speed
+          const current = getStoredLocalOrgs().filter((o) => o.id !== org.id);
+          saveStoredLocalOrgs([org, ...current]);
+          return org;
+        } else if (rpcError) {
+          console.warn('create_organization RPC returned error, trying direct insert:', rpcError.message);
+        }
+      } catch (rpcEx) {
+        console.warn('RPC call failed:', rpcEx);
+      }
+
+      // 2. Direct insert fallback into Supabase
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const user = userRes?.user;
+
+        // Ensure user profile exists
+        if (user) {
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            email: user.email || '',
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+          });
+        }
+
+        const { data: directOrg, error: directError } = await supabase
+          .from('organizations')
+          .insert([
+            {
+              name: input.name,
+              slug,
+              industry: input.industry || 'College',
+            },
+          ])
+          .select()
+          .single();
+
+        if (!directError && directOrg) {
+          if (user) {
+            await supabase.from('organization_members').insert([
+              {
+                organization_id: directOrg.id,
+                user_id: user.id,
+                role: 'owner',
+              },
+            ]);
+          }
+
+          this.setActiveOrgId(directOrg.id);
+          const current = getStoredLocalOrgs().filter((o) => o.id !== directOrg.id);
+          saveStoredLocalOrgs([directOrg, ...current]);
+          return directOrg;
+        } else if (directError) {
+          console.warn('Direct Supabase org insert error:', directError.message);
+        }
+      } catch (insertEx) {
+        console.warn('Direct Supabase insert exception:', insertEx);
+      }
+    }
+
+    // 3. Fallback: Local persistent storage (ensures zero user disruption)
+    const fallbackOrg: Organization = {
+      id: generateUUID(),
       name: input.name,
-      slug: input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      industry: input.industry || 'General',
+      slug,
+      industry: input.industry || 'College',
       logo_url: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase.from('organizations').insert([newOrg]).select().single();
-      if (!error && data) {
-        localOrgs.unshift(data);
-        return data;
-      }
-    }
-
-    localOrgs.unshift(newOrg);
-    this.setActiveOrgId(newOrg.id);
-    return newOrg;
+    const current = getStoredLocalOrgs().filter((o) => o.id !== fallbackOrg.id);
+    saveStoredLocalOrgs([fallbackOrg, ...current]);
+    this.setActiveOrgId(fallbackOrg.id);
+    return fallbackOrg;
   },
 
   async getMembers(orgId: string): Promise<OrganizationMember[]> {
     if (isLiveSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('organization_members')
-        .select('*, profile:profiles(*)')
-        .eq('organization_id', orgId);
-      if (!error && data) return data;
+      try {
+        const { data, error } = await supabase
+          .from('organization_members')
+          .select('*, profile:profiles(*)')
+          .eq('organization_id', orgId);
+        if (!error && data) return data;
+      } catch (e) {
+        console.warn('getMembers error:', e);
+      }
     }
-    return [
-      {
-        id: 'mem-1',
-        organization_id: orgId,
-        user_id: 'user-0001',
-        role: 'owner',
-        created_at: new Date().toISOString(),
-        profile: {
-          id: 'user-0001',
-          email: 'sarah.jenkins@oakwood.edu',
-          full_name: 'Dr. Sarah Jenkins',
-          avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-          created_at: '2026-10-15T00:00:00Z',
-          updated_at: '2026-10-15T00:00:00Z',
-        },
-      },
-      {
-        id: 'mem-2',
-        organization_id: orgId,
-        user_id: 'user-0002',
-        role: 'designer',
-        created_at: new Date().toISOString(),
-        profile: {
-          id: 'user-0002',
-          email: 'marcus.vance@oakwood.edu',
-          full_name: 'Marcus Vance',
-          avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-          created_at: '2026-10-15T00:00:00Z',
-          updated_at: '2026-10-15T00:00:00Z',
-        },
-      },
-    ];
+    return [];
   },
 };

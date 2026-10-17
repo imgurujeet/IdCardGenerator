@@ -52,6 +52,14 @@ export const AppLayout: React.FC = () => {
         setCurrentUser(user);
         const list = await organizationService.getOrganizations();
         setOrgs(list);
+        if (list.length === 0) {
+          setShowCreateModal(true);
+        } else {
+          const activeId = organizationService.getActiveOrgId();
+          const match = list.find((o) => o.id === activeId) || list[0];
+          setCurrentOrgId(match.id);
+          organizationService.setActiveOrgId(match.id);
+        }
       }
     }
 
@@ -63,6 +71,14 @@ export const AppLayout: React.FC = () => {
         setCurrentUser(user);
         const list = await organizationService.getOrganizations();
         setOrgs(list);
+        if (list.length === 0) {
+          setShowCreateModal(true);
+        } else {
+          const activeId = organizationService.getActiveOrgId();
+          const match = list.find((o) => o.id === activeId) || list[0];
+          setCurrentOrgId(match.id);
+          organizationService.setActiveOrgId(match.id);
+        }
       } else {
         navigate('/login');
       }
@@ -155,20 +171,40 @@ export const AppLayout: React.FC = () => {
               </button>
             </div>
 
-            <div className="relative">
-              <select
-                value={currentOrgId}
-                onChange={(e) => handleOrgChange(e.target.value)}
-                className="w-full appearance-none bg-white hover:bg-surface-50 border border-surface-300 rounded-lg px-3 py-2 text-xs font-semibold text-surface-900 outline-none cursor-pointer pr-8 shadow-xs transition-colors"
+            {orgs.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="w-full py-2.5 px-3 bg-brand-50 hover:bg-brand-100 border border-dashed border-brand-300 rounded-lg text-xs font-bold text-brand-700 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
               >
-                {orgs.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
+                <Plus className="w-3.5 h-3.5 text-brand-600" />
+                <span>+ Create Your First College</span>
+              </button>
+            ) : (
+              <div className="relative">
+                <select
+                  value={orgs.some((o) => o.id === currentOrgId) ? currentOrgId : (orgs[0]?.id || '')}
+                  onChange={(e) => {
+                    if (e.target.value === '__NEW__') {
+                      setShowCreateModal(true);
+                    } else {
+                      handleOrgChange(e.target.value);
+                    }
+                  }}
+                  className="w-full appearance-none bg-white hover:bg-surface-50 border border-surface-300 rounded-lg px-3 py-2 text-xs font-semibold text-surface-900 outline-none cursor-pointer pr-8 shadow-xs transition-colors"
+                >
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                  <option value="__NEW__" className="text-brand-600 font-bold">
+                    + Add New College / Project...
                   </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-surface-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-surface-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            )}
           </div>
 
           {/* Navigation Links */}

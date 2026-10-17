@@ -1,9 +1,9 @@
 import { RecordEntity } from '../types/database';
 import { RecordFilterOptions, CSVColumnMapping, CSVImportResult } from '../types/record';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
-import { DEMO_RECORDS } from './mockData';
+import { generateUUID } from '../lib/utils';
 
-let localRecords = [...DEMO_RECORDS];
+let localRecords: RecordEntity[] = [];
 
 export const recordService = {
   async getRecords(orgId: string, options: RecordFilterOptions = {}): Promise<{ records: RecordEntity[]; total: number }> {
@@ -57,7 +57,7 @@ export const recordService = {
     input: { identifier: string; fullName: string; data: Record<string, any>; status?: 'approved' | 'pending' }
   ): Promise<RecordEntity> {
     const newRecord: RecordEntity = {
-      id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       organization_id: orgId,
       identifier: input.identifier,
       full_name: input.fullName,
@@ -179,7 +179,7 @@ export const recordService = {
         'Unknown Name';
 
       const record: RecordEntity = {
-        id: `rec-imp-${Date.now()}-${rowNum}`,
+        id: generateUUID(),
         organization_id: orgId,
         identifier,
         full_name: fullName,

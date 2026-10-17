@@ -1,49 +1,10 @@
 import { FormEntity, FormSubmissionEntity } from '../types/database';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
-import { DEMO_FORMS } from './mockData';
+import { generateUUID } from '../lib/utils';
 import { recordService } from './record.service';
 
-let localForms = [...DEMO_FORMS];
-let localSubmissions: FormSubmissionEntity[] = [
-  {
-    id: 'sub-001',
-    organization_id: 'org-0001',
-    form_id: 'form-0001',
-    data: {
-      student_name: 'Sophia Chen',
-      student_id: 'OA-2026-103',
-      grade: 'Grade 12',
-      section: 'A',
-      blood_group: 'B+',
-      emergency_contact: '+1 (555) 019-4521',
-      photo_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80',
-    },
-    status: 'approved',
-    record_id: 'rec-003',
-    reviewed_by: 'user-0001',
-    created_at: '2026-10-16T11:20:00Z',
-    updated_at: '2026-10-16T11:20:00Z',
-  },
-  {
-    id: 'sub-002',
-    organization_id: 'org-0001',
-    form_id: 'form-0001',
-    data: {
-      student_name: 'Liam Henderson',
-      student_id: 'OA-2026-105',
-      grade: 'Grade 10',
-      section: 'B',
-      blood_group: 'O+',
-      emergency_contact: '+1 (555) 019-3321',
-      photo_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
-    },
-    status: 'submitted',
-    record_id: null,
-    reviewed_by: null,
-    created_at: '2026-10-17T06:15:00Z',
-    updated_at: '2026-10-17T06:15:00Z',
-  },
-];
+let localForms: FormEntity[] = [];
+let localSubmissions: FormSubmissionEntity[] = [];
 
 export const formService = {
   async getForms(orgId: string): Promise<FormEntity[]> {
@@ -94,7 +55,7 @@ export const formService = {
   ): Promise<FormEntity> {
     const slug = `${input.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
     const newForm: FormEntity = {
-      id: `form-${Date.now()}`,
+      id: generateUUID(),
       organization_id: orgId,
       template_id: input.templateId || null,
       title: input.title,
@@ -201,7 +162,7 @@ export const formService = {
       recordId = record.id;
     }
 
-    const subId = `sub-${Date.now()}`;
+    const subId = generateUUID();
     const newSub: FormSubmissionEntity = {
       id: subId,
       organization_id: form.organization_id,

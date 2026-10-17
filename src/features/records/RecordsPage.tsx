@@ -19,7 +19,7 @@ import { CSVColumnMapping } from '../../types/record';
 import { generateSingleCardPdf, generatePrintSheetPdf } from '../generation/renderer/pdfExporter';
 import { generateIndividualCardsZip } from '../generation/renderer/zipExporter';
 import { triggerDownload } from '../../lib/utils';
-import { OAKWOOD_TEMPLATE_DOC } from '../../services/mockData';
+import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
 
 export const RecordsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -194,7 +194,7 @@ export const RecordsPage: React.FC = () => {
 
       // Load active template version
       const tmplRes = await templateService.getTemplateById(genTemplateId);
-      const doc = tmplRes?.activeVersion?.design_data || OAKWOOD_TEMPLATE_DOC;
+      const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
 
       if (genMode === 'print_sheet') {
         // Multi-up A4 Print Sheet
@@ -243,7 +243,7 @@ export const RecordsPage: React.FC = () => {
   const handleDownloadSingleCard = async (record: RecordEntity) => {
     try {
       const tmplRes = await templateService.getTemplateById(templates[0]?.id || '');
-      const doc = tmplRes?.activeVersion?.design_data || OAKWOOD_TEMPLATE_DOC;
+      const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
       const pdfBytes = await generateSingleCardPdf(doc, record.data, true);
       const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
       triggerDownload(blob, `${record.identifier}_${record.full_name.replace(/\s+/g, '_')}.pdf`);

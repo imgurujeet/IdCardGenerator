@@ -15,13 +15,13 @@ import {
 import { organizationService } from '../../services/organization.service';
 import { templateService } from '../../services/template.service';
 import { TemplateEntity } from '../../types/database';
-import { OAKWOOD_TEMPLATE_DOC, NEXACORP_TEMPLATE_DOC } from '../../services/mockData';
+import { OAKWOOD_TEMPLATE_DOC, NEXACORP_TEMPLATE_DOC, PTEC_TEMPLATE_DOC } from '../../services/mockData';
 
 const CATEGORIES = [
   { id: 'all', label: 'All Templates' },
+  { id: 'college', label: 'Colleges & Universities', icon: GraduationCap },
   { id: 'school', label: 'Schools', icon: School },
   { id: 'corporate', label: 'Corporate', icon: Building2 },
-  { id: 'college', label: 'Universities', icon: GraduationCap },
   { id: 'hospital', label: 'Medical & Hospital', icon: Hospital },
   { id: 'event', label: 'Events & Badges', icon: Ticket },
 ];
@@ -35,9 +35,9 @@ export const TemplatesPage: React.FC = () => {
   // New Template Modal state
   const [showCreateModal, setShowCreateModal] = useState(searchParams.get('create') === 'true');
   const [newTmplName, setNewTmplName] = useState('');
-  const [newTmplCategory, setNewTmplCategory] = useState<'school' | 'corporate' | 'college' | 'hospital' | 'event'>('school');
+  const [newTmplCategory, setNewTmplCategory] = useState<'school' | 'corporate' | 'college' | 'hospital' | 'event'>('college');
   const [newTmplPreset, setNewTmplPreset] = useState<'CR80_PORTRAIT' | 'CR80_LANDSCAPE' | 'EVENT_BADGE'>('CR80_PORTRAIT');
-  const [starterLayout, setStarterLayout] = useState<'blank' | 'school' | 'corporate'>('school');
+  const [starterLayout, setStarterLayout] = useState<'blank' | 'ptec' | 'school' | 'corporate'>('ptec');
   const [isCreating, setIsCreating] = useState(false);
 
   const orgId = organizationService.getActiveOrgId();
@@ -63,7 +63,14 @@ export const TemplatesPage: React.FC = () => {
       setIsCreating(true);
       let initialDoc = undefined;
 
-      if (starterLayout === 'school') {
+      if (starterLayout === 'ptec') {
+        initialDoc = {
+          ...PTEC_TEMPLATE_DOC,
+          id: `tmpl-${Date.now()}`,
+          name: newTmplName,
+          category: newTmplCategory,
+        };
+      } else if (starterLayout === 'school') {
         initialDoc = {
           ...OAKWOOD_TEMPLATE_DOC,
           id: `tmpl-${Date.now()}`,
@@ -146,76 +153,112 @@ export const TemplatesPage: React.FC = () => {
         })}
       </div>
 
-      {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {templates.map((tmpl) => (
-          <div
-            key={tmpl.id}
-            onClick={() => navigate(`/editor/${tmpl.id}`)}
-            className="group bg-white rounded-xl border border-surface-200 hover:border-brand-500 hover:shadow-card transition-all cursor-pointer p-4 flex flex-col justify-between"
-          >
-            <div>
-              {/* Preview Thumbnail Box */}
-              <div className="h-48 bg-surface-100 rounded-lg border border-surface-200 flex items-center justify-center p-4 relative overflow-hidden group-hover:bg-brand-50/20 transition-colors">
-                {tmpl.category === 'corporate' ? (
-                  /* Landscape Preview Outline */
-                  <div className="w-44 h-28 bg-surface-900 rounded-md shadow-md border border-surface-700 p-2.5 flex items-center gap-3">
-                    <div className="w-1.5 h-full bg-brand-500 rounded" />
-                    <div className="w-12 h-16 rounded bg-surface-800 border border-surface-600 shrink-0" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="w-20 h-2 bg-white rounded" />
-                      <div className="w-14 h-1.5 bg-brand-400 rounded" />
-                      <div className="w-16 h-1 bg-surface-500 rounded" />
-                    </div>
-                  </div>
-                ) : (
-                  /* Portrait Preview Outline */
-                  <div className="w-28 h-40 bg-white rounded-md shadow-md border border-surface-300 p-2.5 flex flex-col items-center justify-between">
-                    <div className="w-full h-4 bg-brand-700 rounded-xs" />
-                    <div className="w-10 h-12 rounded bg-surface-200 border border-brand-200" />
-                    <div className="w-full space-y-1">
-                      <div className="w-16 h-1.5 bg-surface-900 rounded mx-auto" />
-                      <div className="w-10 h-1 bg-surface-400 rounded mx-auto" />
-                    </div>
-                    <div className="w-6 h-6 bg-surface-300 rounded" />
-                  </div>
-                )}
-
-                <span className="absolute top-2.5 right-2.5 text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-white/90 border border-surface-200 text-surface-700 shadow-xs">
-                  {tmpl.category}
-                </span>
-              </div>
-
-              {/* Title & Description */}
-              <div className="mt-3.5">
-                <h3 className="font-semibold text-sm text-surface-900 group-hover:text-brand-600 transition-colors">
-                  {tmpl.name}
-                </h3>
-                <p className="text-xs text-surface-500 line-clamp-2 mt-1 leading-relaxed">
-                  {tmpl.description || 'Custom ID badge template configured for standard CR80 physical card dimensions.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="mt-4 pt-3 border-t border-surface-100 flex items-center justify-between text-xs">
-              <span className="font-semibold text-brand-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                Open in Canvas <Sliders className="w-3.5 h-3.5 ml-1" />
-              </span>
-
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={(e) => handleDelete(tmpl.id, e)}
-                  title="Delete Template"
-                  className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+      {/* Templates Grid or Empty State */}
+      {templates.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-surface-200 p-12 text-center max-w-xl mx-auto shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-4">
+            <GraduationCap className="w-7 h-7" />
           </div>
-        ))}
-      </div>
+          <h3 className="text-base font-bold text-surface-900 mb-1">No ID Card Templates Yet</h3>
+          <p className="text-xs text-surface-500 mb-6 leading-relaxed">
+            Create your first ID card template for this college. You can start with our Bihar PTEC Both-Sided preset or start with a custom blank canvas.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                setNewTmplName('PTEC Barh Both-Sided Student Card');
+                setStarterLayout('ptec');
+                setShowCreateModal(true);
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Use PTEC Both-Sided Preset</span>
+            </button>
+            <button
+              onClick={() => {
+                setNewTmplName('');
+                setStarterLayout('blank');
+                setShowCreateModal(true);
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 bg-surface-100 hover:bg-surface-200 text-surface-700 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Blank Custom Template</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {templates.map((tmpl) => (
+            <div
+              key={tmpl.id}
+              onClick={() => navigate(`/editor/${tmpl.id}`)}
+              className="group bg-white rounded-xl border border-surface-200 hover:border-brand-500 hover:shadow-card transition-all cursor-pointer p-4 flex flex-col justify-between"
+            >
+              <div>
+                {/* Preview Thumbnail Box */}
+                <div className="h-48 bg-surface-100 rounded-lg border border-surface-200 flex items-center justify-center p-4 relative overflow-hidden group-hover:bg-brand-50/20 transition-colors">
+                  {tmpl.category === 'corporate' ? (
+                    /* Landscape Preview Outline */
+                    <div className="w-44 h-28 bg-surface-900 rounded-md shadow-md border border-surface-700 p-2.5 flex items-center gap-3">
+                      <div className="w-1.5 h-full bg-brand-500 rounded" />
+                      <div className="w-12 h-16 rounded bg-surface-800 border border-surface-600 shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="w-20 h-2 bg-white rounded" />
+                        <div className="w-14 h-1.5 bg-brand-400 rounded" />
+                        <div className="w-16 h-1 bg-surface-500 rounded" />
+                      </div>
+                    </div>
+                  ) : (
+                    /* Portrait Preview Outline */
+                    <div className="w-28 h-40 bg-white rounded-md shadow-md border border-surface-300 p-2.5 flex flex-col items-center justify-between">
+                      <div className="w-full h-4 bg-brand-700 rounded-xs" />
+                      <div className="w-10 h-12 rounded bg-surface-200 border border-brand-200" />
+                      <div className="w-full space-y-1">
+                        <div className="w-16 h-1.5 bg-surface-900 rounded mx-auto" />
+                        <div className="w-10 h-1 bg-surface-400 rounded mx-auto" />
+                      </div>
+                      <div className="w-6 h-6 bg-surface-300 rounded" />
+                    </div>
+                  )}
+
+                  <span className="absolute top-2.5 right-2.5 text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-white/90 border border-surface-200 text-surface-700 shadow-xs">
+                    {tmpl.category}
+                  </span>
+                </div>
+
+                {/* Title & Description */}
+                <div className="mt-3.5">
+                  <h3 className="font-semibold text-sm text-surface-900 group-hover:text-brand-600 transition-colors">
+                    {tmpl.name}
+                  </h3>
+                  <p className="text-xs text-surface-500 line-clamp-2 mt-1 leading-relaxed">
+                    {tmpl.description || 'Custom ID badge template configured for standard CR80 physical card dimensions.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bottom Actions */}
+              <div className="mt-4 pt-3 border-t border-surface-100 flex items-center justify-between text-xs">
+                <span className="font-semibold text-brand-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  Open in Canvas <Sliders className="w-3.5 h-3.5 ml-1" />
+                </span>
+
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => handleDelete(tmpl.id, e)}
+                    title="Delete Template"
+                    className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Create New Template Modal */}
       {showCreateModal && (
@@ -281,18 +324,31 @@ export const TemplatesPage: React.FC = () => {
 
               <div>
                 <label className="text-xs font-semibold text-surface-700 block mb-1">Starting Layout</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStarterLayout('ptec')}
+                    className={`p-2.5 rounded-lg border text-left text-xs transition-colors ${
+                      starterLayout === 'ptec'
+                        ? 'border-brand-500 bg-brand-50 text-brand-900 font-semibold ring-1 ring-brand-500'
+                        : 'border-surface-200 text-surface-700 hover:bg-surface-50'
+                    }`}
+                  >
+                    <p className="font-semibold text-brand-700">⭐ Bihar PTEC</p>
+                    <p className="text-[10px] text-surface-500 font-normal mt-0.5">Two-sided with college bg</p>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setStarterLayout('school')}
                     className={`p-2.5 rounded-lg border text-left text-xs transition-colors ${
                       starterLayout === 'school'
-                        ? 'border-brand-500 bg-brand-50 text-brand-900 font-semibold'
+                        ? 'border-brand-500 bg-brand-50 text-brand-900 font-semibold ring-1 ring-brand-500'
                         : 'border-surface-200 text-surface-700 hover:bg-surface-50'
                     }`}
                   >
                     <p className="font-semibold">Academic</p>
-                    <p className="text-[10px] text-surface-500 font-normal">Photo + QR + blood group</p>
+                    <p className="text-[10px] text-surface-500 font-normal mt-0.5">Photo + QR + blood group</p>
                   </button>
 
                   <button

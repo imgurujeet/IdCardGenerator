@@ -1,10 +1,11 @@
 import { TemplateEntity, TemplateVersionEntity } from '../types/database';
 import { TemplateDocument } from '../types/template';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
-import { DEMO_TEMPLATES, DEMO_TEMPLATE_VERSIONS, OAKWOOD_TEMPLATE_DOC, NEXACORP_TEMPLATE_DOC } from './mockData';
+import { generateUUID } from '../lib/utils';
+import { OAKWOOD_TEMPLATE_DOC, NEXACORP_TEMPLATE_DOC } from './mockData';
 
-let localTemplates = [...DEMO_TEMPLATES];
-let localVersions = { ...DEMO_TEMPLATE_VERSIONS };
+let localTemplates: TemplateEntity[] = [];
+let localVersions: Record<string, TemplateVersionEntity> = {};
 
 export const templateService = {
   async getTemplates(orgId: string, category?: string): Promise<TemplateEntity[]> {
@@ -63,7 +64,7 @@ export const templateService = {
       initialDoc?: TemplateDocument;
     }
   ): Promise<{ template: TemplateEntity; version: TemplateVersionEntity }> {
-    const templateId = `tmpl-${Date.now()}`;
+    const templateId = generateUUID();
     const newTemplate: TemplateEntity = {
       id: templateId,
       organization_id: orgId,
@@ -209,7 +210,7 @@ export const templateService = {
     };
 
     const newVersion: TemplateVersionEntity = {
-      id: `ver-${templateId}-1`,
+      id: generateUUID(),
       template_id: templateId,
       version_number: 1,
       design_data: doc,
@@ -237,7 +238,7 @@ export const templateService = {
     const nextVerNum = existingVersion ? existingVersion.version_number + 1 : 1;
 
     const newVersion: TemplateVersionEntity = {
-      id: `ver-${templateId}-${nextVerNum}`,
+      id: generateUUID(),
       template_id: templateId,
       version_number: nextVerNum,
       design_data: designData,

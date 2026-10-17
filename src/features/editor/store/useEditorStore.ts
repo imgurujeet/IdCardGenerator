@@ -1,7 +1,22 @@
 import { create } from 'zustand';
 import { TemplateDocument, TemplateElement } from '../../../types/template';
 import { generateId } from '../../../lib/utils';
-import { DEMO_RECORDS } from '../../../services/mockData';
+
+export const DEFAULT_PREVIEW_RECORD: Record<string, any> = {
+  full_name: 'Student Name',
+  identifier: 'STU-001',
+  student_name: 'Student Name',
+  student_id: 'STU-001',
+  father_name: "Father's Name",
+  session: '2024-2026',
+  roll_no: '01',
+  blood_group: 'B+',
+  mobile: '+91 9876543210',
+  emergency_contact: '+91 9876543210',
+  address: 'Campus Address, Bihar',
+  valid_thru: '2026-12-31',
+  photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+};
 
 interface EditorState {
   document: TemplateDocument | null;
@@ -27,6 +42,7 @@ interface EditorState {
   setZoom: (zoom: number) => void;
   toggleGridSnap: () => void;
   setSampleRecordIndex: (index: number) => void;
+  setAvailableSampleRecords: (records: Array<Record<string, any>>) => void;
   setBackgroundImage: (side: 'front' | 'back', url: string, opacity?: number) => void;
   removeBackgroundImage: (side: 'front' | 'back') => void;
   addCustomFont: (fontName: string, fontUrl: string) => void;
@@ -56,8 +72,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isDirty: false,
   isSaving: false,
   sampleRecordIndex: 0,
-  availableSampleRecords: DEMO_RECORDS.map((r) => r.data),
+  availableSampleRecords: [DEFAULT_PREVIEW_RECORD],
   customFonts: ['Inter', 'Roboto', 'Montserrat', 'Oswald', 'Outfit', 'Playfair Display', 'Poppins'],
+  setAvailableSampleRecords: (records) => {
+    set({
+      availableSampleRecords: records.length > 0 ? records : [DEFAULT_PREVIEW_RECORD],
+      sampleRecordIndex: 0,
+    });
+  },
 
   history: [],
   historyIndex: -1,

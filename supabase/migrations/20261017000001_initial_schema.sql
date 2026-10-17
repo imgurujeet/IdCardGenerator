@@ -21,13 +21,46 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own profile"
+CREATE POLICY "Authenticated users can view profiles"
     ON public.profiles FOR SELECT
-    USING (auth.uid() = id);
+    USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "Users can update their own profile"
     ON public.profiles FOR UPDATE
     USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert their own profile"
+    ON public.profiles FOR INSERT
+    WITH CHECK (auth.uid() = id);
+
+-- Automatic profile sync from auth.users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, full_name, avatar_url)
+    VALUES (
+        new.id,
+        new.email,
+        COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+        new.raw_user_meta_data->>'avatar_url'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+        avatar_url = COALESCE(EXCLUDED.avatar_url, public.profiles.avatar_url),
+        updated_at = now();
+    RETURN new;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT OR UPDATE ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ------------------------------------------------------------------------------
 -- 2. Organizations & Multi-Tenant Membership
@@ -102,9 +135,12 @@ CREATE POLICY "Users can view members of their organization"
     ON public.organization_members FOR SELECT
     USING (public.check_user_in_org(organization_id));
 
-CREATE POLICY "Admins and Owners can invite/manage members"
+CREATE POLICY "Users can add themselves as owner or admins can manage members"
     ON public.organization_members FOR INSERT
-    WITH CHECK (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
+    WITH CHECK (
+        user_id = auth.uid() OR
+        public.check_user_role(organization_id, ARRAY['owner', 'admin'])
+    );
 
 CREATE POLICY "Admins and Owners can update member roles"
     ON public.organization_members FOR UPDATE
@@ -113,6 +149,50 @@ CREATE POLICY "Admins and Owners can update member roles"
 CREATE POLICY "Admins and Owners can remove members"
     ON public.organization_members FOR DELETE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
+
+-- RPC Function: Atomically create an organization and register current user as Owner
+CREATE OR REPLACE FUNCTION public.create_organization(
+    p_name TEXT,
+    p_industry TEXT DEFAULT 'College'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_slug TEXT;
+    v_org public.organizations%ROWTYPE;
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'You must be logged in to create a project or college';
+    END IF;
+
+    -- Ensure profile exists
+    INSERT INTO public.profiles (id, email, full_name)
+    SELECT id, email, COALESCE(raw_user_meta_data->>'full_name', split_part(email, '@', 1))
+    FROM auth.users
+    WHERE id = v_user_id
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Generate a clean URL slug
+    v_slug := lower(regexp_replace(p_name, '[^a-zA-Z0-9]+', '-', 'g')) || '-' || substring(gen_random_uuid()::text from 1 for 6);
+
+    -- Insert organization
+    INSERT INTO public.organizations (name, slug, industry)
+    VALUES (p_name, v_slug, COALESCE(p_industry, 'College'))
+    RETURNING * INTO v_org;
+
+    -- Add user as owner in organization_members
+    INSERT INTO public.organization_members (organization_id, user_id, role)
+    VALUES (v_org.id, v_user_id, 'owner')
+    ON CONFLICT (organization_id, user_id) DO NOTHING;
+
+    RETURN to_jsonb(v_org);
+END;
+$$;
 
 -- ------------------------------------------------------------------------------
 -- 3. Templates & Template Versions
