@@ -340,4 +340,17 @@ export const formService = {
 
     return true;
   },
+
+  async deleteForm(formId: string): Promise<boolean> {
+    if (isLiveSupabaseConfigured) {
+      try {
+        await supabase.from('forms').delete().eq('id', formId);
+      } catch (e) {
+        console.warn('Supabase deleteForm exception:', e);
+      }
+    }
+    const filtered = getStoredLocalForms().filter((f) => f.id !== formId);
+    saveStoredLocalForms(filtered);
+    return true;
+  },
 };

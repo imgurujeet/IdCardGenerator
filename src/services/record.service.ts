@@ -269,4 +269,18 @@ export const recordService = {
     saveStoredLocalRecords(filtered);
     return true;
   },
+
+  async bulkDeleteRecords(recordIds: string[]): Promise<boolean> {
+    if (isLiveSupabaseConfigured) {
+      try {
+        await supabase.from('records').delete().in('id', recordIds);
+      } catch (e) {
+        console.warn('Supabase bulkDeleteRecords exception:', e);
+      }
+    }
+    const set = new Set(recordIds);
+    const filtered = getStoredLocalRecords().filter((r) => !set.has(r.id));
+    saveStoredLocalRecords(filtered);
+    return true;
+  },
 };

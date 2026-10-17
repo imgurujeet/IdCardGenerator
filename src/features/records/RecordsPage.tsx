@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   Loader2,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
 import { recordService } from '../../services/record.service';
@@ -252,6 +253,33 @@ export const RecordsPage: React.FC = () => {
     }
   };
 
+  // Delete Handlers
+  const handleDeleteRecord = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete the record for "${name}"?`)) return;
+    try {
+      await recordService.deleteRecord(id);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      setSelectedIds((prev) => prev.filter((i) => i !== id));
+    } catch (e) {
+      console.error('Failed to delete record:', e);
+      alert('Could not delete record.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete ${selectedIds.length} selected record(s)?`)) return;
+    try {
+      await recordService.bulkDeleteRecords(selectedIds);
+      const set = new Set(selectedIds);
+      setRecords((prev) => prev.filter((r) => !set.has(r.id)));
+      setSelectedIds([]);
+    } catch (e) {
+      console.error('Failed bulk delete:', e);
+      alert('Could not delete selected records.');
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Header */}
@@ -398,13 +426,22 @@ export const RecordsPage: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() => handleDownloadSingleCard(rec)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-surface-700 hover:text-brand-700 bg-white hover:bg-brand-50 border border-surface-300 rounded-md shadow-xs transition-colors"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-brand-600" />
-                      <span>Print PDF</span>
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => handleDownloadSingleCard(rec)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-surface-700 hover:text-brand-700 bg-white hover:bg-brand-50 border border-surface-300 rounded-md shadow-xs transition-colors"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-brand-600" />
+                        <span>Print PDF</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRecord(rec.id, rec.full_name)}
+                        title="Delete record"
+                        className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -426,6 +463,13 @@ export const RecordsPage: React.FC = () => {
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Batch Print Cards</span>
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete ({selectedIds.length})</span>
               </button>
               <button
                 onClick={() => setSelectedIds([])}

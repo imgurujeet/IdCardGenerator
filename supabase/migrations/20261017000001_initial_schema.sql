@@ -350,6 +350,11 @@ CREATE POLICY "Data Operators, Admins, Owners can update submission status"
     ON public.form_submissions FOR UPDATE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
 
+DROP POLICY IF EXISTS "Admins and Owners can delete form submissions" ON public.form_submissions;
+CREATE POLICY "Admins and Owners can delete form submissions"
+    ON public.form_submissions FOR DELETE
+    USING (public.check_user_role(organization_id, ARRAY['owner', 'admin']));
+
 -- Secure RPC for anonymous public form submissions
 CREATE OR REPLACE FUNCTION public.submit_public_form(
     p_slug TEXT,
@@ -417,6 +422,11 @@ CREATE POLICY "Org members can view records"
 DROP POLICY IF EXISTS "Data Operators, Admins, Owners can manage records" ON public.records;
 CREATE POLICY "Data Operators, Admins, Owners can manage records"
     ON public.records FOR ALL
+    USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
+
+DROP POLICY IF EXISTS "Data Operators, Admins, Owners can delete records" ON public.records;
+CREATE POLICY "Data Operators, Admins, Owners can delete records"
+    ON public.records FOR DELETE
     USING (public.check_user_role(organization_id, ARRAY['owner', 'admin', 'data_operator']));
 
 -- ------------------------------------------------------------------------------

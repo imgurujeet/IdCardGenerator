@@ -126,6 +126,17 @@ export const FormsPage: React.FC = () => {
     }
   };
 
+  const handleDeleteForm = async (formId: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete the form "${title}"?`)) return;
+    try {
+      await formService.deleteForm(formId);
+      setForms((prev) => prev.filter((f) => f.id !== formId));
+    } catch (e) {
+      console.error('Failed to delete form:', e);
+      alert('Could not delete form.');
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Header */}
@@ -207,13 +218,22 @@ export const FormsPage: React.FC = () => {
                   {form.fields_schema.length} fields
                 </td>
                 <td className="px-5 py-4 text-right">
-                  <button
-                    onClick={() => navigate(`/forms/${form.id}/submissions`)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold rounded-lg text-xs transition-colors"
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>View Submissions</span>
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => navigate(`/forms/${form.id}/submissions`)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold rounded-lg text-xs transition-colors"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>View Submissions</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteForm(form.id, form.title)}
+                      title="Delete Form"
+                      className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
