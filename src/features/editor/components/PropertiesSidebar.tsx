@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Sliders,
   Trash2,
@@ -14,6 +14,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
+import { resolveElementText } from '../../../lib/utils';
+import { formService } from '../../../services/form.service';
+import { organizationService } from '../../../services/organization.service';
 
 const STANDARD_FIELDS = [
   { key: 'student_name', label: 'Candidate / Student Name' },
@@ -39,15 +42,60 @@ export const PropertiesSidebar: React.FC = () => {
     activeSide,
     selectedElementId,
     customFonts,
+    availableSampleRecords,
+    sampleRecordIndex,
     updateElement,
     deleteElement,
     duplicateElement,
   } = useEditorStore();
 
+  const [formFields, setFormFields] = useState<Array<{ key: string; label: string }>>(STANDARD_FIELDS);
+
+  useEffect(() => {
+    async function loadFormFields() {
+      try {
+        const orgId = organizationService.getActiveOrgId();
+        const forms = await formService.getForms(orgId);
+        const discovered = new Map<string, string>();
+
+        // 1. Standard fields
+        STANDARD_FIELDS.forEach((f) => discovered.set(f.key, f.label));
+
+        // 2. Discover from forms
+        forms.forEach((form) => {
+          if (Array.isArray(form.fields_schema)) {
+            form.fields_schema.forEach((f) => {
+              if (f.key && !discovered.has(f.key)) {
+                discovered.set(f.key, f.label || f.key);
+              }
+            });
+          }
+        });
+
+        // 3. Discover from loaded sample records
+        if (availableSampleRecords && availableSampleRecords.length > 0) {
+          availableSampleRecords.forEach((rec) => {
+            Object.keys(rec).forEach((k) => {
+              if (!discovered.has(k) && k !== 'id' && k !== 'organization_id' && k !== 'created_at') {
+                discovered.set(k, k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+              }
+            });
+          });
+        }
+
+        setFormFields(Array.from(discovered.entries()).map(([key, label]) => ({ key, label })));
+      } catch (err) {
+        setFormFields(STANDARD_FIELDS);
+      }
+    }
+    loadFormFields();
+  }, [availableSampleRecords]);
+
   if (!doc) return null;
 
   const currentLayout = activeSide === 'back' && doc.layouts.back ? doc.layouts.back : doc.layouts.front;
   const selectedElem = currentLayout.elements.find((e) => e.id === selectedElementId);
+  const currentRecord = availableSampleRecords[sampleRecordIndex] || {};
 
   if (!selectedElem) {
     return (
@@ -98,21 +146,36 @@ export const PropertiesSidebar: React.FC = () => {
 
       <div className="p-4 space-y-5 text-xs">
         {/* Dynamic Data Binding */}
-        {(selectedElem.type === 'dynamic-text' || selectedElem.type === 'portrait' || selectedElem.type === 'qr-code' || selectedElem.type === 'barcode') && (
+        {(selectedElem.type === 'dynamic-text' || selectedElem.type === 'text' || selectedElem.type === 'portrait' || selectedElem.type === 'qr-code' || selectedElem.type === 'barcode') && (
           <div className="p-3 bg-brand-50/50 rounded-lg border border-brand-200">
-            <span className="font-semibold text-brand-900 flex items-center gap-1.5 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-brand-600" /> Dynamic Field Binding
+            <span className="font-semibold text-brand-900 flex items-center justify-between mb-2">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-brand-600" /> Form Data Binding
+              </span>
+              <span className="text-[9px] uppercase tracking-wider text-brand-600 bg-brand-100/70 px-1.5 py-0.5 rounded font-mono">
+                {selectedElem.type}
+              </span>
             </span>
             <div className="space-y-2">
               <div>
-                <label className="text-[11px] text-surface-600 block mb-1">Target Record Field</label>
+                <label className="text-[11px] text-surface-600 block mb-1">Target Form Field</label>
                 <select
                   value={selectedElem.fieldKey || ''}
-                  onChange={(e) => updateElement(selectedElem.id, { fieldKey: e.target.value })}
+                  onChange={(e) => {
+                    const newKey = e.target.value;
+                    const updates: Record<string, any> = { fieldKey: newKey };
+                    if (selectedElem.type === 'text' && newKey) {
+                      updates.type = 'dynamic-text';
+                    }
+                    if (newKey && 'content' in selectedElem && (!selectedElem.content || selectedElem.content === selectedElem.name)) {
+                      updates.content = `{{${newKey}}}`;
+                    }
+                    updateElement(selectedElem.id, updates);
+                  }}
                   className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs text-surface-900 focus:border-brand-500 outline-none"
                 >
-                  <option value="">-- No Binding (Static) --</option>
-                  {STANDARD_FIELDS.map((f) => (
+                  <option value="">-- No Direct Binding (Static) --</option>
+                  {formFields.map((f) => (
                     <option key={f.key} value={f.key}>
                       {f.label} ({`{{${f.key}}}`})
                     </option>
@@ -120,14 +183,14 @@ export const PropertiesSidebar: React.FC = () => {
                 </select>
               </div>
 
-              {selectedElem.type === 'dynamic-text' && (
+              {(selectedElem.type === 'dynamic-text' || selectedElem.type === 'text') && (
                 <div>
                   <label className="text-[11px] text-surface-600 block mb-1">Fallback if Missing</label>
                   <input
                     type="text"
                     value={selectedElem.fallback || ''}
                     onChange={(e) => updateElement(selectedElem.id, { fallback: e.target.value })}
-                    placeholder="e.g. N/A"
+                    placeholder="e.g. N/A or 141"
                     className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs text-surface-900 focus:border-brand-500 outline-none"
                   />
                 </div>
@@ -208,13 +271,54 @@ export const PropertiesSidebar: React.FC = () => {
             </span>
 
             <div>
-              <label className="text-[10px] text-surface-500 block mb-1">Text Template Content</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] text-surface-500 font-medium">Text Content / Template</label>
+                <span className="text-[10px] text-brand-600 font-medium flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Form Dynamic Tags
+                </span>
+              </div>
               <textarea
                 rows={2}
                 value={selectedElem.content || ''}
                 onChange={(e) => updateElement(selectedElem.id, { content: e.target.value })}
+                placeholder="e.g. Roll No- {{roll_no}} or {{student_name}}"
                 className="w-full p-2 border border-surface-300 rounded text-xs font-mono bg-white outline-none focus:border-brand-500"
               />
+
+              {/* Dynamic Tag Quick-Insert Chips */}
+              <div className="mt-1.5">
+                <span className="text-[10px] text-surface-500 block mb-1 font-medium">Click to insert form placeholder:</span>
+                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                  {formFields.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => {
+                        const current = selectedElem.content || '';
+                        const tag = `{{${f.key}}}`;
+                        const updated = current ? `${current} ${tag}` : tag;
+                        updateElement(selectedElem.id, {
+                          content: updated,
+                          type: 'dynamic-text',
+                          fieldKey: selectedElem.fieldKey || f.key,
+                        });
+                      }}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded text-[10px] font-mono border border-brand-200 transition-colors"
+                      title={`Insert {{${f.key}}}`}
+                    >
+                      +{`{{${f.key}}}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Card Output Preview */}
+              <div className="mt-2 p-2 bg-surface-50 rounded border border-surface-200 text-[11px]">
+                <span className="text-surface-400 text-[10px] block mb-0.5 font-medium">Live Card Output:</span>
+                <span className="font-semibold text-surface-800 break-words font-mono">
+                  {resolveElementText(selectedElem, currentRecord) || <span className="text-surface-400 italic font-normal">Empty</span>}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

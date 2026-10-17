@@ -57,13 +57,64 @@ export function triggerDownload(blob: Blob, filename: string) {
 // Dynamic field interpolator: replaces {{field_name}} with record[field_name]
 export function interpolateString(template: string, data: Record<string, any>, fallback: string = ''): string {
   if (!template) return '';
-  return template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_, key) => {
-    const val = data[key];
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_, key) => {
+    let val = data[key];
+    if (val === undefined && data.data && typeof data.data === 'object') {
+      val = data.data[key];
+    }
     if (val !== undefined && val !== null && String(val).trim() !== '') {
       return String(val);
     }
     return fallback;
   });
+}
+
+// Unified text resolution logic for preview and high-res print export
+export function resolveElementText(
+  elem: {
+    type?: string;
+    content?: string;
+    fieldKey?: string;
+    fallback?: string;
+    name?: string;
+  },
+  record: Record<string, any> = {}
+): string {
+  let rawText = elem.content || '';
+
+  // 1. If text contains template tags like {{roll_no}}, interpolate them with record values
+  if (rawText.includes('{{')) {
+    rawText = interpolateString(rawText, record, elem.fallback || '');
+  } else if (elem.type === 'dynamic-text' || elem.fieldKey) {
+    // 2. If it's a dynamic element or has a fieldKey bound
+    if (elem.fieldKey) {
+      let val = record[elem.fieldKey];
+      if (val === undefined && record.data && typeof record.data === 'object') {
+        val = record.data[elem.fieldKey];
+      }
+
+      const displayVal =
+        val !== undefined && val !== null && String(val).trim() !== ''
+          ? String(val)
+          : (elem.fallback || '');
+
+      if (rawText.trim() && rawText !== elem.name) {
+        // If content has a label prefix (e.g. "Roll No: " or "Roll No-")
+        if (rawText.endsWith(':') || rawText.endsWith('-') || rawText.endsWith(' ') || rawText.includes(':') || rawText.includes('-')) {
+          const sep = rawText.endsWith(' ') ? '' : ' ';
+          rawText = `${rawText}${sep}${displayVal}`;
+        } else {
+          rawText = `${rawText}: ${displayVal}`;
+        }
+      } else {
+        rawText = displayVal;
+      }
+    } else if (elem.fallback && !rawText.trim()) {
+      rawText = elem.fallback;
+    }
+  }
+
+  return rawText;
 }
 
 // RFC4122 compliant UUID v4 generator

@@ -32,4 +32,41 @@ describe('Unit Conversion Utilities', () => {
     const result = interpolateString(template, data, 'N/A');
     expect(result).toBe('Blood: N/A');
   });
+
+  it('resolves dynamic elements with prefix labels without stripping text', async () => {
+    const { resolveElementText } = await import('../../src/lib/utils');
+    const record = { roll_no: '141', student_name: 'Abhishek Kumar' };
+
+    // Case 1: Template with placeholder
+    expect(
+      resolveElementText(
+        { type: 'dynamic-text', content: 'Roll No- {{roll_no}}', fieldKey: 'roll_no' },
+        record
+      )
+    ).toBe('Roll No- 141');
+
+    // Case 2: Static label prefix with fieldKey
+    expect(
+      resolveElementText(
+        { type: 'dynamic-text', content: 'Roll No:', fieldKey: 'roll_no' },
+        record
+      )
+    ).toBe('Roll No: 141');
+
+    // Case 3: Pure dynamic variable
+    expect(
+      resolveElementText(
+        { type: 'dynamic-text', content: '{{student_name}}', fieldKey: 'student_name' },
+        record
+      )
+    ).toBe('Abhishek Kumar');
+
+    // Case 4: Fallback used when record value missing
+    expect(
+      resolveElementText(
+        { type: 'dynamic-text', content: 'Roll No- {{roll_no}}', fieldKey: 'roll_no', fallback: '101' },
+        {}
+      )
+    ).toBe('Roll No- 101');
+  });
 });

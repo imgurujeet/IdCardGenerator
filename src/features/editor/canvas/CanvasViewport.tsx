@@ -1,7 +1,25 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useEditorStore } from '../store/useEditorStore';
-import { mmToPx, pxToMm, interpolateString } from '../../../lib/utils';
+import { mmToPx, pxToMm, resolveElementText } from '../../../lib/utils';
 import { TemplateElement } from '../../../types/template';
+import {
+  ArrowUpToLine,
+  ArrowDownToLine,
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  Trash2,
+  Lock,
+  Unlock,
+  Sparkles,
+  Type,
+  Image as ImageIcon,
+  QrCode,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  AlignCenter,
+} from 'lucide-react';
 
 export const CanvasViewport: React.FC = () => {
   const {
@@ -15,12 +33,38 @@ export const CanvasViewport: React.FC = () => {
     availableSampleRecords,
     setSelectedElementId,
     updateElement,
+    deleteElement,
+    duplicateElement,
+    reorderElement,
+    addElement,
+    setZoom,
   } = useEditorStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number; elemX: number; elemY: number; elemW: number; elemH: number } | null>(null);
+
+  // Floating right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    element: TemplateElement | null;
+  } | null>(null);
+
+  // Close context menu on outside click or escape
+  useEffect(() => {
+    const handleClose = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('click', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   if (!doc) {
     return (
@@ -140,8 +184,13 @@ export const CanvasViewport: React.FC = () => {
 
   const startDrag = (e: React.MouseEvent, handle: string, elem: TemplateElement) => {
     e.stopPropagation();
-    if (elem.locked) return;
+    // Only respond to left mouse button (e.button === 0)
+    if (e.button !== 0) return;
+
     setSelectedElementId(elem.id);
+    setContextMenu(null);
+    if (elem.locked) return;
+
     setIsDragging(true);
     setDragHandle(handle);
     setDragStart({
@@ -157,7 +206,18 @@ export const CanvasViewport: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      onClick={() => setSelectedElementId(null)}
+      onClick={() => {
+        setSelectedElementId(null);
+        setContextMenu(null);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          element: null,
+        });
+      }}
       className="flex-1 overflow-auto bg-surface-100 flex items-center justify-center p-8 select-none relative"
       style={{
         backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
@@ -200,6 +260,16 @@ export const CanvasViewport: React.FC = () => {
               <div
                 key={elem.id}
                 onMouseDown={(e) => startDrag(e, 'move', elem)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedElementId(elem.id);
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    element: elem,
+                  });
+                }}
                 className={`absolute cursor-move group transition-[outline] ${
                   isSelected ? 'outline outline-2 outline-brand-600' : 'hover:outline hover:outline-1 hover:outline-brand-400'
                 }`}
@@ -245,6 +315,285 @@ export const CanvasViewport: React.FC = () => {
             );
           })}
       </div>
+
+      {/* Floating Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="fixed z-[999] bg-surface-900/95 backdrop-blur-md text-white rounded-xl shadow-2xl border border-surface-700/80 p-1.5 min-w-[220px] text-xs font-medium animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            left: `${Math.min(contextMenu.x, window.innerWidth - 240)}px`,
+            top: `${Math.min(contextMenu.y, window.innerHeight - 340)}px`,
+          }}
+        >
+          {contextMenu.element ? (
+            <div className="space-y-1">
+              {/* Header */}
+              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-surface-400 border-b border-surface-800 flex items-center justify-between">
+                <span className="truncate max-w-[130px] text-surface-200">{contextMenu.element.name}</span>
+                <span className="text-[9px] uppercase tracking-wider font-mono text-brand-400 px-1.5 py-0.5 bg-brand-950/60 rounded">
+                  {contextMenu.element.type}
+                </span>
+              </div>
+
+              {/* Layer Ordering */}
+              <div className="py-1 space-y-0.5">
+                <button
+                  onClick={() => {
+                    reorderElement(contextMenu.element!.id, 'top');
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <ArrowUpToLine className="w-3.5 h-3.5 text-brand-400" />
+                  <span>Bring to Front</span>
+                </button>
+                <button
+                  onClick={() => {
+                    reorderElement(contextMenu.element!.id, 'up');
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <ArrowUp className="w-3.5 h-3.5 text-surface-400" />
+                  <span>Bring Forward</span>
+                </button>
+                <button
+                  onClick={() => {
+                    reorderElement(contextMenu.element!.id, 'down');
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <ArrowDown className="w-3.5 h-3.5 text-surface-400" />
+                  <span>Send Backward</span>
+                </button>
+                <button
+                  onClick={() => {
+                    reorderElement(contextMenu.element!.id, 'bottom');
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <ArrowDownToLine className="w-3.5 h-3.5 text-surface-400" />
+                  <span>Send to Back</span>
+                </button>
+              </div>
+
+              <div className="border-t border-surface-800 my-1" />
+
+              {/* Alignment */}
+              <div className="py-1 space-y-0.5">
+                <button
+                  onClick={() => {
+                    const centeredX = Math.max(0, Number(((doc.dimensions.width - contextMenu.element!.width) / 2).toFixed(2)));
+                    updateElement(contextMenu.element!.id, { x: centeredX });
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <AlignCenter className="w-3.5 h-3.5 text-surface-400" />
+                  <span>Center Horizontally</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const centeredY = Math.max(0, Number(((doc.dimensions.height - contextMenu.element!.height) / 2).toFixed(2)));
+                    updateElement(contextMenu.element!.id, { y: centeredY });
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <AlignCenter className="w-3.5 h-3.5 text-surface-400 rotate-90" />
+                  <span>Center Vertically</span>
+                </button>
+              </div>
+
+              <div className="border-t border-surface-800 my-1" />
+
+              {/* Actions */}
+              <div className="py-1 space-y-0.5">
+                <button
+                  onClick={() => {
+                    duplicateElement(contextMenu.element!.id);
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  <Copy className="w-3.5 h-3.5 text-surface-400" />
+                  <span>Duplicate Element</span>
+                </button>
+                <button
+                  onClick={() => {
+                    updateElement(contextMenu.element!.id, { locked: !contextMenu.element!.locked });
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+                >
+                  {contextMenu.element.locked ? (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Unlock Element</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-surface-400" />
+                      <span>Lock Element</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="border-t border-surface-800 my-1" />
+
+              {/* Delete */}
+              <button
+                onClick={() => {
+                  deleteElement(contextMenu.element!.id);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors text-left"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span>Delete Element</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-surface-400 border-b border-surface-800">
+                Quick Insert
+              </div>
+              <button
+                onClick={() => {
+                  addElement({
+                    type: 'dynamic-text',
+                    name: 'Roll No',
+                    content: 'Roll No- {{roll_no}}',
+                    fieldKey: 'roll_no',
+                    fallback: '141',
+                    fontSize: 4.8,
+                    fontWeight: 'bold',
+                    color: '#ffffff',
+                    width: 32,
+                    height: 5.5,
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+                <span>Insert Roll Number</span>
+              </button>
+              <button
+                onClick={() => {
+                  addElement({
+                    type: 'dynamic-text',
+                    name: 'Student Name',
+                    content: '{{student_name}}',
+                    fieldKey: 'student_name',
+                    fallback: 'ABHISHEK KUMAR',
+                    fontSize: 6.8,
+                    fontWeight: 'bold',
+                    color: '#dc2626',
+                    width: 48,
+                    height: 6,
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Insert Student Name</span>
+              </button>
+              <button
+                onClick={() => {
+                  addElement({
+                    type: 'text',
+                    name: 'Static Label',
+                    content: 'Label Text',
+                    fontSize: 4,
+                    width: 30,
+                    height: 5,
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+              >
+                <Type className="w-3.5 h-3.5 text-surface-400" />
+                <span>Insert Static Text</span>
+              </button>
+              <button
+                onClick={() => {
+                  addElement({
+                    type: 'portrait',
+                    name: 'Candidate Photo',
+                    fieldKey: 'photo_url',
+                    width: 26,
+                    height: 32,
+                    borderRadius: 2,
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
+                <span>Insert Student Photo</span>
+              </button>
+              <button
+                onClick={() => {
+                  addElement({
+                    type: 'qr-code',
+                    name: 'Verification QR',
+                    dataContent: '{{student_id}}',
+                    fieldKey: 'student_id',
+                    width: 18,
+                    height: 18,
+                    color: '#000000',
+                    backgroundColor: '#ffffff',
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
+              >
+                <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                <span>Insert QR Code</span>
+              </button>
+
+              <div className="border-t border-surface-800 my-1" />
+
+              <div className="flex items-center gap-1 px-1">
+                <button
+                  onClick={() => {
+                    setZoom(Math.min(zoom + 0.25, 4));
+                    setContextMenu(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 py-1 rounded hover:bg-surface-800 text-surface-300 text-[11px]"
+                >
+                  <ZoomIn className="w-3 h-3" /> Zoom In
+                </button>
+                <button
+                  onClick={() => {
+                    setZoom(Math.max(zoom - 0.25, 0.5));
+                    setContextMenu(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 py-1 rounded hover:bg-surface-800 text-surface-300 text-[11px]"
+                >
+                  <ZoomOut className="w-3 h-3" /> Zoom Out
+                </button>
+                <button
+                  onClick={() => {
+                    setZoom(1.5);
+                    setContextMenu(null);
+                  }}
+                  className="p-1 rounded hover:bg-surface-800 text-surface-400"
+                  title="Reset Zoom"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -283,14 +632,7 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
 
     case 'text':
     case 'dynamic-text': {
-      let rawText = elem.content || '';
-      if (elem.type === 'dynamic-text') {
-        if (elem.fieldKey && record[elem.fieldKey] !== undefined) {
-          rawText = String(record[elem.fieldKey]);
-        } else {
-          rawText = interpolateString(rawText, record, elem.fallback || '');
-        }
-      }
+      let rawText = resolveElementText(elem, record);
 
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();

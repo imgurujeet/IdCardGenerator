@@ -1,6 +1,6 @@
 import QRCode from 'qrcode';
 import { CardLayout, TemplateDocument, TemplateElement } from '../../../types/template';
-import { interpolateString, mmToPx } from '../../../lib/utils';
+import { interpolateString, mmToPx, resolveElementText } from '../../../lib/utils';
 
 export interface RenderOptions {
   dpi?: number;                 // default 300 for print, 96 for screen
@@ -135,14 +135,7 @@ async function renderElement(
 
     case 'text':
     case 'dynamic-text': {
-      let rawText = elem.content || '';
-      if (elem.type === 'dynamic-text') {
-        if (elem.fieldKey && record[elem.fieldKey] !== undefined) {
-          rawText = String(record[elem.fieldKey]);
-        } else {
-          rawText = interpolateString(rawText, record, elem.fallback || '');
-        }
-      }
+      let rawText = resolveElementText(elem, record);
 
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();
