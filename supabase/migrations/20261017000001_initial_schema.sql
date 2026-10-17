@@ -413,3 +413,30 @@ CREATE POLICY "Org members can view their template requests"
 CREATE POLICY "Org members can create template requests"
     ON public.template_requests FOR INSERT
     WITH CHECK (public.check_user_in_org(organization_id));
+
+-- ------------------------------------------------------------------------------
+-- 10. Storage Buckets (Assets & Portraits)
+-- ------------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES 
+    ('portraits', 'portraits', true, 10485760, ARRAY['image/png', 'image/jpeg', 'image/webp']),
+    ('id-card-assets', 'id-card-assets', true, 10485760, ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Allow public read access for portraits and card assets so cards and exports render cleanly
+CREATE POLICY "Public Read Portraits"
+    ON storage.objects FOR SELECT
+    USING (bucket_id = 'portraits');
+
+CREATE POLICY "Public Read ID Card Assets"
+    ON storage.objects FOR SELECT
+    USING (bucket_id = 'id-card-assets');
+
+-- Allow portrait uploads (students submitting public forms and editors uploading imagery)
+CREATE POLICY "Allow Uploads To Portraits"
+    ON storage.objects FOR INSERT
+    WITH CHECK (bucket_id IN ('portraits', 'id-card-assets'));
+
+CREATE POLICY "Allow Updates To Portraits"
+    ON storage.objects FOR UPDATE
+    USING (bucket_id IN ('portraits', 'id-card-assets'));

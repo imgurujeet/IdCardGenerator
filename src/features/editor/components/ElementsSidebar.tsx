@@ -22,6 +22,7 @@ import {
   FileUp,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
+import { storageService } from '../../../services/storage.service';
 
 export const ElementsSidebar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'elements' | 'background' | 'layers'>('elements');
@@ -45,14 +46,15 @@ export const ElementsSidebar: React.FC = () => {
   const currentLayout = activeSide === 'back' && doc.layouts.back ? doc.layouts.back : doc.layouts.front;
   const elements = [...currentLayout.elements].sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0));
 
-  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setBackgroundImage(activeSide, reader.result as string, 1);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const res = await storageService.uploadBackground(file);
+        setBackgroundImage(activeSide, res.url, 1);
+      } catch (err) {
+        console.error('Failed to upload/compress background:', err);
+      }
     }
   };
 

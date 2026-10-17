@@ -11,6 +11,8 @@ import { formService } from '../../services/form.service';
 import { FormEntity } from '../../types/database';
 import { FormFieldDefinition } from '../../types/form';
 
+import { storageService, UploadImageResult } from '../../services/storage.service';
+
 export const PublicFormPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [form, setForm] = useState<FormEntity | null>(null);
@@ -18,6 +20,8 @@ export const PublicFormPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionResult, setCompressionResult] = useState<UploadImageResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
 
@@ -52,16 +56,21 @@ export const PublicFormPage: React.FC = () => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setPhotoPreview(result);
-        handleInputChange(key, result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    try {
+      setIsCompressing(true);
+      const res = await storageService.uploadPortrait(file, form?.organization_id || 'org-0001');
+      setPhotoPreview(res.url);
+      setCompressionResult(res);
+      handleInputChange(key, res.url);
+    } catch (err: any) {
+      console.error('Image compression failed:', err);
+      alert('Failed to process image. Please try another photo.');
+    } finally {
+      setIsCompressing(false);
     }
   };
 
@@ -172,7 +181,12 @@ export const PublicFormPage: React.FC = () => {
                     </label>
 
                     <div className="flex items-center gap-4">
-                      {photoPreview ? (
+                      {isCompressing ? (
+                        <div className="w-24 h-28 rounded-lg bg-brand-50 border-2 border-dashed border-brand-400 flex flex-col items-center justify-center text-brand-600 text-center p-2 shrink-0 animate-pulse">
+                          <Loader2 className="w-6 h-6 animate-spin mb-1" />
+                          <span className="text-[10px] font-bold">Compressing...</span>
+                        </div>
+                      ) : photoPreview ? (
                         <div className="relative w-24 h-28 rounded-lg overflow-hidden border-2 border-brand-500 shadow-xs shrink-0">
                           <img
                             src={photoPreview}
@@ -187,18 +201,30 @@ export const PublicFormPage: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="flex-1">
+                      <div className="flex-1 space-y-2">
                         <input
                           type="file"
                           accept="image/*"
+                          disabled={isCompressing}
                           required={isRequired && !photoPreview}
                           onChange={(e) => handlePhotoUpload(e, field.key)}
-                          className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 cursor-pointer text-surface-600"
+                          className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 cursor-pointer text-surface-600 disabled:opacity-50"
                         />
                         {field.helpText && (
-                          <p className="text-[11px] text-surface-400 mt-1 leading-normal">
+                          <p className="text-[11px] text-surface-400 leading-normal">
                             {field.helpText}
                           </p>
+                        )}
+
+                        {compressionResult && (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium">
+                            <span className="font-bold">⚡ Optimized:</span>
+                            <span>
+                              {compressionResult.savingsPercent}% saved (
+                              {(compressionResult.originalSize / 1024).toFixed(0)}KB ➔{' '}
+                              {(compressionResult.compressedSize / 1024).toFixed(0)}KB)
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>
