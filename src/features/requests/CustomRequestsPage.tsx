@@ -11,22 +11,30 @@ interface RequestItem {
   createdAt: string;
 }
 
-const INITIAL_REQUESTS: RequestItem[] = [
-  {
-    id: 'req-01',
-    title: 'Executive Healthcare Staff Badge',
-    orgType: 'Hospital / Medical',
-    description: 'Requires color-coded department stripes, high-contrast name text, and RFID barcode layout.',
-    status: 'in_progress',
-    createdAt: '2026-10-15T09:00:00Z',
-  },
-];
+const STORAGE_REQUESTS_KEY = 'idforge_design_requests';
+
+function getStoredRequests(): RequestItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_REQUESTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredRequests(list: RequestItem[]) {
+  try {
+    localStorage.setItem(STORAGE_REQUESTS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save requests:', e);
+  }
+}
 
 export const CustomRequestsPage: React.FC = () => {
-  const [requests, setRequests] = useState<RequestItem[]>(INITIAL_REQUESTS);
+  const [requests, setRequests] = useState<RequestItem[]>(getStoredRequests);
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState('');
-  const [orgType, setOrgType] = useState('School');
+  const [orgType, setOrgType] = useState('College');
   const [desc, setDesc] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -42,7 +50,9 @@ export const CustomRequestsPage: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
 
-    setRequests([newReq, ...requests]);
+    const updated = [newReq, ...requests];
+    setRequests(updated);
+    saveStoredRequests(updated);
     setShowModal(false);
     setTitle('');
     setDesc('');
@@ -67,42 +77,61 @@ export const CustomRequestsPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-surface-50 border-b border-surface-200 text-surface-600 uppercase tracking-wider font-semibold">
-            <tr>
-              <th className="px-5 py-3">Request Title</th>
-              <th className="px-5 py-3">Organization Type</th>
-              <th className="px-5 py-3">Requirements</th>
-              <th className="px-5 py-3">Date Submitted</th>
-              <th className="px-5 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-100">
-            {requests.map((req) => (
-              <tr key={req.id} className="hover:bg-surface-50/70 transition-colors">
-                <td className="px-5 py-4 font-semibold text-surface-900 text-sm">{req.title}</td>
-                <td className="px-5 py-4 text-surface-700">{req.orgType}</td>
-                <td className="px-5 py-4 text-surface-600 max-w-xs truncate">{req.description}</td>
-                <td className="px-5 py-4 text-surface-500 font-mono">{formatDate(req.createdAt)}</td>
-                <td className="px-5 py-4">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize ${
-                      req.status === 'completed'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : req.status === 'in_progress'
-                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}
-                  >
-                    {req.status.replace('_', ' ')}
-                  </span>
-                </td>
+      {requests.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-surface-200 p-12 text-center max-w-xl mx-auto shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-4">
+            <Plus className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-bold text-surface-900 mb-1">No Custom Design Requests Yet</h3>
+          <p className="text-xs text-surface-500 mb-6 leading-relaxed">
+            Need a custom ID card layout for your college or school? Submit your requirements and our design team will prepare it for you.
+          </p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Submit Your First Request</span>
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-surface-200 shadow-subtle overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surface-50 border-b border-surface-200 text-surface-600 uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="px-5 py-3">Request Title</th>
+                <th className="px-5 py-3">Organization Type</th>
+                <th className="px-5 py-3">Requirements</th>
+                <th className="px-5 py-3">Date Submitted</th>
+                <th className="px-5 py-3">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-surface-100">
+              {requests.map((req) => (
+                <tr key={req.id} className="hover:bg-surface-50/70 transition-colors">
+                  <td className="px-5 py-4 font-semibold text-surface-900 text-sm">{req.title}</td>
+                  <td className="px-5 py-4 text-surface-700">{req.orgType}</td>
+                  <td className="px-5 py-4 text-surface-600 max-w-xs truncate">{req.description}</td>
+                  <td className="px-5 py-4 text-surface-500 font-mono">{formatDate(req.createdAt)}</td>
+                  <td className="px-5 py-4">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize ${
+                        req.status === 'completed'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : req.status === 'in_progress'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}
+                    >
+                      {req.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 z-50 bg-surface-900/40 backdrop-blur-xs flex items-center justify-center p-4">
