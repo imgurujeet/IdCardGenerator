@@ -22,6 +22,13 @@ export const BaseElementSchema = z.object({
   zIndex: z.number().int().default(1),
 });
 
+export const TextShadowSchema = z.object({
+  color: z.string().default('#000000'),
+  blur: z.number().nonnegative().default(2),
+  offsetX: z.number().default(1),
+  offsetY: z.number().default(1),
+});
+
 export const TextElementSchema = BaseElementSchema.extend({
   type: z.enum(['text', 'dynamic-text']),
   content: z.string(),
@@ -36,6 +43,10 @@ export const TextElementSchema = BaseElementSchema.extend({
   letterSpacing: z.number().optional(),
   lineHeight: z.number().optional(),
   textTransform: z.enum(['none', 'uppercase', 'lowercase', 'capitalize']).optional(),
+  underline: z.boolean().optional(),
+  textShadow: TextShadowSchema.optional(),
+  textStrokeColor: z.string().optional(),
+  textStrokeWidth: z.number().nonnegative().optional(),
   autoFit: z.boolean().optional(),
 });
 
@@ -48,6 +59,8 @@ export const ImageElementSchema = BaseElementSchema.extend({
   borderColor: z.string().optional(),
   borderWidth: z.number().nonnegative().optional(),
   grayscale: z.boolean().optional(),
+  shadowColor: z.string().optional(),
+  shadowBlur: z.number().nonnegative().optional(),
 });
 
 export const ShapeElementSchema = BaseElementSchema.extend({
@@ -78,7 +91,8 @@ export const TemplateElementSchema = z.discriminatedUnion('type', [
 export const CardLayoutSchema = z.object({
   backgroundColor: z.string().default('#ffffff'),
   backgroundImageUrl: z.string().optional(),
-  elements: z.array(z.any()), // Validated dynamically against TemplateElementSchema
+  backgroundOpacity: z.number().min(0).max(1).optional(),
+  elements: z.array(z.any()),
 });
 
 export const TemplateDocumentSchema = z.object({

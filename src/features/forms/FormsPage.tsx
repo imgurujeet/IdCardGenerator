@@ -54,6 +54,9 @@ export const FormsPage: React.FC = () => {
       order: 3,
     },
   ]);
+  const [autoApprove, setAutoApprove] = useState(true);
+  const [enforceUnique, setEnforceUnique] = useState(true);
+  const [uniqueFieldKey, setUniqueFieldKey] = useState('phone');
   const [isSaving, setIsSaving] = useState(false);
 
   const orgId = organizationService.getActiveOrgId();
@@ -107,6 +110,9 @@ export const FormsPage: React.FC = () => {
       await formService.createForm(orgId, {
         title: formTitle,
         description: formDesc,
+        auto_approve: autoApprove,
+        enforce_unique: enforceUnique,
+        unique_field_key: uniqueFieldKey,
         fields,
       });
       setShowBuilder(false);
@@ -259,6 +265,67 @@ export const FormsPage: React.FC = () => {
                       className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white outline-none focus:border-brand-500"
                     />
                   </div>
+                </div>
+
+                {/* Submission & Approval Automation Settings */}
+                <div className="bg-surface-50 p-4 rounded-xl border border-surface-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-surface-900 uppercase tracking-wider">
+                      Automation & Submission Controls
+                    </span>
+                    <span className="text-[11px] text-surface-500 font-medium">Hands-free workflows</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="flex items-start gap-2.5 p-3 rounded-lg border border-surface-200 bg-white cursor-pointer hover:border-brand-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={autoApprove}
+                        onChange={(e) => setAutoApprove(e.target.checked)}
+                        className="mt-0.5 rounded text-brand-600 focus:ring-brand-500"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-surface-900 flex items-center gap-1">
+                          ⚡ Instant Auto-Approve
+                        </span>
+                        <span className="text-[11px] text-surface-500 block leading-tight mt-0.5">
+                          Automatically approve submissions and create student records immediately without manual review.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2.5 p-3 rounded-lg border border-surface-200 bg-white cursor-pointer hover:border-brand-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={enforceUnique}
+                        onChange={(e) => setEnforceUnique(e.target.checked)}
+                        className="mt-0.5 rounded text-brand-600 focus:ring-brand-500"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-surface-900 flex items-center gap-1">
+                          🔒 Single Submission Per User
+                        </span>
+                        <span className="text-[11px] text-surface-500 block leading-tight mt-0.5">
+                          Prevent duplicate submissions from the same phone number, email, or roll number.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {enforceUnique && (
+                    <div className="flex items-center gap-3 pt-1 border-t border-surface-200/60">
+                      <span className="text-xs font-semibold text-surface-700">Check uniqueness using:</span>
+                      <select
+                        value={uniqueFieldKey}
+                        onChange={(e) => setUniqueFieldKey(e.target.value)}
+                        className="text-xs font-semibold px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white text-surface-800 outline-none focus:border-brand-500"
+                      >
+                        <option value="phone">Mobile / Phone Number (Recommended)</option>
+                        <option value="email">Email Address</option>
+                        <option value="student_id">Roll Number / Student ID</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Fields Builder List */}

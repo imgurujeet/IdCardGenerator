@@ -14,6 +14,7 @@ interface EditorState {
   isSaving: boolean;
   sampleRecordIndex: number;
   availableSampleRecords: Array<Record<string, any>>;
+  customFonts: string[];
 
   // History for undo/redo
   history: TemplateDocument[];
@@ -26,6 +27,9 @@ interface EditorState {
   setZoom: (zoom: number) => void;
   toggleGridSnap: () => void;
   setSampleRecordIndex: (index: number) => void;
+  setBackgroundImage: (side: 'front' | 'back', url: string, opacity?: number) => void;
+  removeBackgroundImage: (side: 'front' | 'back') => void;
+  addCustomFont: (fontName: string, fontUrl: string) => void;
 
   // Element actions
   addElement: (element: Partial<TemplateElement> & { type: TemplateElement['type']; name: string }) => void;
@@ -53,9 +57,70 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isSaving: false,
   sampleRecordIndex: 0,
   availableSampleRecords: DEMO_RECORDS.map((r) => r.data),
+  customFonts: ['Inter', 'Roboto', 'Montserrat', 'Oswald', 'Outfit', 'Playfair Display', 'Poppins'],
 
   history: [],
   historyIndex: -1,
+
+  setBackgroundImage: (side, url, opacity = 1) => {
+    const { document: doc, history, historyIndex } = get();
+    if (!doc) return;
+
+    const newDoc = JSON.parse(JSON.stringify(doc)) as TemplateDocument;
+    if (side === 'back') {
+      if (!newDoc.layouts.back) {
+        newDoc.layouts.back = { backgroundColor: '#ffffff', elements: [] };
+      }
+      newDoc.layouts.back.backgroundImageUrl = url;
+      newDoc.layouts.back.backgroundOpacity = opacity;
+    } else {
+      newDoc.layouts.front.backgroundImageUrl = url;
+      newDoc.layouts.front.backgroundOpacity = opacity;
+    }
+
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(newDoc)));
+    set({
+      document: newDoc,
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+      isDirty: true,
+    });
+  },
+
+  removeBackgroundImage: (side) => {
+    const { document: doc, history, historyIndex } = get();
+    if (!doc) return;
+
+    const newDoc = JSON.parse(JSON.stringify(doc)) as TemplateDocument;
+    if (side === 'back' && newDoc.layouts.back) {
+      delete newDoc.layouts.back.backgroundImageUrl;
+    } else {
+      delete newDoc.layouts.front.backgroundImageUrl;
+    }
+
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(newDoc)));
+    set({
+      document: newDoc,
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+      isDirty: true,
+    });
+  },
+
+  addCustomFont: (fontName, fontUrl) => {
+    // Dynamically inject @font-face into document
+    const fontFace = new FontFace(fontName, `url(${fontUrl})`);
+    fontFace.load().then((loadedFont) => {
+      document.fonts.add(loadedFont);
+      set((state) => ({
+        customFonts: Array.from(new Set([...state.customFonts, fontName])),
+      }));
+    }).catch((err) => {
+      console.warn('Failed to load custom font:', err);
+    });
+  },
 
   setDocument: (doc) => {
     set({

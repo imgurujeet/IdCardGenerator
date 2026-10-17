@@ -19,7 +19,7 @@ export const CanvasViewport: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragHandle, setDragHandle] = useState<string | null>(null); // 'move' | 'nw' | 'ne' | 'se' | 'sw'
+  const [dragHandle, setDragHandle] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number; elemX: number; elemY: number; elemW: number; elemH: number } | null>(null);
 
   if (!doc) {
@@ -39,10 +39,8 @@ export const CanvasViewport: React.FC = () => {
   const cardHeightPx = mmToPx(doc.dimensions.height, screenDpi);
   const cornerRadiusPx = doc.dimensions.cornerRadius ? mmToPx(doc.dimensions.cornerRadius, screenDpi) : 0;
 
-  // Selected element
   const selectedElem = currentLayout.elements.find((e) => e.id === selectedElementId);
 
-  // Mouse move handler for dragging and resizing
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging || !dragStart || !selectedElem) return;
@@ -183,6 +181,7 @@ export const CanvasViewport: React.FC = () => {
             src={currentLayout.backgroundImageUrl}
             alt="Card Background"
             className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            style={{ opacity: currentLayout.backgroundOpacity ?? 1 }}
           />
         )}
 
@@ -298,16 +297,27 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
 
       const fontSizePx = mmToPx(elem.fontSize, dpi);
 
+      const textShadowStyle = elem.textShadow
+        ? `${mmToPx(elem.textShadow.offsetX, dpi)}px ${mmToPx(elem.textShadow.offsetY, dpi)}px ${mmToPx(elem.textShadow.blur, dpi)}px ${elem.textShadow.color}`
+        : undefined;
+
+      const strokeStyle = elem.textStrokeColor && elem.textStrokeWidth
+        ? `${mmToPx(elem.textStrokeWidth, dpi)}px ${elem.textStrokeColor}`
+        : undefined;
+
       return (
         <div
           className="w-full h-full flex flex-col justify-center leading-tight overflow-hidden break-words pointer-events-none"
           style={{
             color: elem.color || '#000000',
-            fontFamily: elem.fontFamily || 'Inter',
+            fontFamily: `"${elem.fontFamily || 'Inter'}", sans-serif`,
             fontSize: `${fontSizePx}px`,
             fontWeight: elem.fontWeight === 'bold' ? 700 : elem.fontWeight === 'semibold' ? 600 : elem.fontWeight === 'medium' ? 500 : 400,
             fontStyle: elem.fontStyle || 'normal',
             textAlign: elem.textAlign || 'left',
+            textDecoration: elem.underline ? 'underline' : undefined,
+            textShadow: textShadowStyle,
+            WebkitTextStroke: strokeStyle,
           }}
         >
           {rawText.split('\n').map((line, i) => (
@@ -347,6 +357,7 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
             objectFit: elem.objectFit || 'cover',
             borderRadius: `${radiusPx}px`,
             border: elem.borderWidth && elem.borderColor ? `${mmToPx(elem.borderWidth, dpi)}px solid ${elem.borderColor}` : undefined,
+            boxShadow: elem.shadowColor && elem.shadowBlur ? `0px 2px ${mmToPx(elem.shadowBlur, dpi)}px ${elem.shadowColor}` : undefined,
           }}
         />
       );

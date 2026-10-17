@@ -61,6 +61,9 @@ export interface FormEntity {
   public_slug: string;
   is_published: boolean;
   accepting_submissions: boolean;
+  auto_approve?: boolean;
+  enforce_unique?: boolean;
+  unique_field_key?: string;
   fields_schema: any[];
   created_by: string | null;
   created_at: string;

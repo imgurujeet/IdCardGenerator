@@ -86,6 +86,9 @@ export const formService = {
       title: string;
       description?: string;
       templateId?: string;
+      auto_approve?: boolean;
+      enforce_unique?: boolean;
+      unique_field_key?: string;
       fields: any[];
     }
   ): Promise<FormEntity> {
@@ -99,6 +102,9 @@ export const formService = {
       public_slug: slug,
       is_published: true,
       accepting_submissions: true,
+      auto_approve: input.auto_approve ?? false,
+      enforce_unique: input.enforce_unique ?? false,
+      unique_field_key: input.unique_field_key || 'mobile',
       fields_schema: input.fields,
       created_by: null,
       created_at: new Date().toISOString(),
@@ -145,15 +151,65 @@ export const formService = {
       return { success: false, error: 'Form is not active or no longer accepting responses.' };
     }
 
+    // Check duplicate if enforce_unique is enabled
+    if (form.enforce_unique && form.unique_field_key) {
+      const uniqueVal = String(data[form.unique_field_key] || '').trim().toLowerCase();
+      if (uniqueVal) {
+        const isDuplicate = localSubmissions.some((s) => {
+          if (s.form_id !== form.id) return false;
+          const val = String(s.data[form.unique_field_key!] || '').trim().toLowerCase();
+          return val === uniqueVal;
+        });
+
+        if (isDuplicate) {
+          return {
+            success: false,
+            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Only one submission is permitted per user.`,
+          };
+        }
+      }
+    }
+
+    let recordId: string | null = null;
+    let initialStatus: FormSubmissionEntity['status'] = 'submitted';
+
+    // Auto-approve feature
+    if (form.auto_approve) {
+      initialStatus = 'approved';
+      const identifier =
+        data['roll_no'] ||
+        data['student_id'] ||
+        data['employee_id'] ||
+        data['mobile'] ||
+        data['phone'] ||
+        data['identifier'] ||
+        `REC-${Date.now().toString().slice(-5)}`;
+
+      const fullName =
+        data['student_name'] ||
+        data['employee_name'] ||
+        data['full_name'] ||
+        data['name'] ||
+        'Approved Student';
+
+      const record = await recordService.createRecord(form.organization_id, {
+        identifier,
+        fullName,
+        data,
+        status: 'approved',
+      });
+      recordId = record.id;
+    }
+
     const subId = `sub-${Date.now()}`;
     const newSub: FormSubmissionEntity = {
       id: subId,
       organization_id: form.organization_id,
       form_id: form.id,
       data,
-      status: 'submitted',
-      record_id: null,
-      reviewed_by: null,
+      status: initialStatus,
+      record_id: recordId,
+      reviewed_by: form.auto_approve ? 'system_auto_approval' : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

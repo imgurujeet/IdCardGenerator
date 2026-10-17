@@ -20,6 +20,13 @@ export type ElementType =
   | 'qr-code'
   | 'barcode';
 
+export interface TextShadowConfig {
+  color: string;
+  blur: number;      // mm or px
+  offsetX: number;   // mm or px
+  offsetY: number;   // mm or px
+}
+
 export interface BaseElement {
   id: string;
   type: ElementType;
@@ -49,6 +56,10 @@ export interface TextElement extends BaseElement {
   letterSpacing?: number;
   lineHeight?: number;
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  underline?: boolean;
+  textShadow?: TextShadowConfig;
+  textStrokeColor?: string;
+  textStrokeWidth?: number;      // mm
   autoFit?: boolean;
 }
 
@@ -61,6 +72,8 @@ export interface ImageElement extends BaseElement {
   borderColor?: string;
   borderWidth?: number;          // mm
   grayscale?: boolean;
+  shadowColor?: string;
+  shadowBlur?: number;
 }
 
 export interface ShapeElement extends BaseElement {
@@ -86,6 +99,7 @@ export type TemplateElement = TextElement | ImageElement | ShapeElement | CodeEl
 export interface CardLayout {
   backgroundColor: string;
   backgroundImageUrl?: string;
+  backgroundOpacity?: number;    // 0.0 - 1.0
   elements: TemplateElement[];
 }
 

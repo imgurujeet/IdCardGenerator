@@ -42,5 +42,8 @@ export const FormCreateSchema = z.object({
   title: z.string().min(2, 'Form title must be at least 2 characters'),
   description: z.string().optional(),
   templateId: z.string().optional(),
+  auto_approve: z.boolean().default(false),
+  enforce_unique: z.boolean().default(false),
+  unique_field_key: z.string().optional(),
   fields: z.array(FormFieldDefinitionSchema).min(1, 'Form must contain at least one field'),
 });

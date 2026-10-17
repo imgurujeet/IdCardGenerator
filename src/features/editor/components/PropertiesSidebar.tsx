@@ -10,24 +10,27 @@ import {
   AlignRight,
   Bold,
   Italic,
+  Underline as UnderlineIcon,
   Sparkles,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 
 const STANDARD_FIELDS = [
-  { key: 'student_name', label: 'Full Legal Name' },
-  { key: 'student_id', label: 'Student / Employee ID' },
-  { key: 'grade', label: 'Class / Grade' },
-  { key: 'section', label: 'Section / Homeroom' },
-  { key: 'department', label: 'Department' },
-  { key: 'designation', label: 'Designation / Role' },
+  { key: 'student_name', label: 'Candidate / Student Name' },
+  { key: 'roll_no', label: 'Roll Number' },
+  { key: 'session', label: 'Academic Session (e.g. 2024-26)' },
+  { key: 'father_name', label: "Father's Name (F. Name)" },
+  { key: 'dob', label: 'Date of Birth (D.O.B)' },
   { key: 'blood_group', label: 'Blood Group' },
+  { key: 'address', label: 'Village / Town Address' },
+  { key: 'police_station', label: 'Police Station (PS)' },
+  { key: 'district', label: 'District & Pincode' },
+  { key: 'mobile', label: 'Mobile / Phone Number' },
+  { key: 'photo_url', label: 'Candidate Portrait Photo' },
+  { key: 'student_id', label: 'Registration / ID Number' },
+  { key: 'grade', label: 'Class / Course' },
+  { key: 'section', label: 'Section' },
   { key: 'emergency_contact', label: 'Emergency Contact' },
-  { key: 'phone', label: 'Phone Number' },
-  { key: 'email', label: 'Email Address' },
-  { key: 'photo_url', label: 'Photo URL' },
-  { key: 'issue_date', label: 'Issue Date' },
-  { key: 'expiry_date', label: 'Expiry Date' },
 ];
 
 export const PropertiesSidebar: React.FC = () => {
@@ -35,6 +38,7 @@ export const PropertiesSidebar: React.FC = () => {
     document: doc,
     activeSide,
     selectedElementId,
+    customFonts,
     updateElement,
     deleteElement,
     duplicateElement,
@@ -51,7 +55,7 @@ export const PropertiesSidebar: React.FC = () => {
         <Sliders className="w-8 h-8 mb-2 text-surface-300 stroke-[1.5]" />
         <p className="text-xs font-medium text-surface-600 mb-1">No Element Selected</p>
         <p className="text-[11px] text-surface-400 max-w-[200px]">
-          Click any element on the card canvas or in the layers list to adjust its properties.
+          Click any element on the card canvas or in the layers list to adjust its properties, shadow, and fonts.
         </p>
       </aside>
     );
@@ -132,7 +136,7 @@ export const PropertiesSidebar: React.FC = () => {
           </div>
         )}
 
-        {/* Position & Dimensions (Canonical Millimeters) */}
+        {/* Position & Dimensions */}
         <div>
           <span className="font-semibold text-surface-900 block mb-2 uppercase tracking-wider text-[11px]">
             Position & Dimensions (mm)
@@ -196,11 +200,11 @@ export const PropertiesSidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Text Properties */}
+        {/* Text Typography & Photoshop Styling */}
         {(selectedElem.type === 'text' || selectedElem.type === 'dynamic-text') && (
           <div className="space-y-3 pt-2 border-t border-surface-200">
             <span className="font-semibold text-surface-900 block uppercase tracking-wider text-[11px]">
-              Typography
+              Typography & Photoshop Styling
             </span>
 
             <div>
@@ -219,12 +223,16 @@ export const PropertiesSidebar: React.FC = () => {
                 <select
                   value={selectedElem.fontFamily || 'Inter'}
                   onChange={(e) => updateElement(selectedElem.id, { fontFamily: e.target.value })}
-                  className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500"
+                  className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500 font-medium"
                 >
-                  <option value="Inter">Inter (Sans)</option>
-                  <option value="Roboto">Roboto</option>
-                  <option value="JetBrains Mono">JetBrains Mono</option>
-                  <option value="Georgia">Georgia (Serif)</option>
+                  {customFonts.map((font) => (
+                    <option key={font} value={font}>
+                      {font}
+                    </option>
+                  ))}
+                  <option value="Arial">Arial</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Courier New">Courier New</option>
                 </select>
               </div>
 
@@ -243,7 +251,7 @@ export const PropertiesSidebar: React.FC = () => {
               </div>
             </div>
 
-            {/* Formatting Row */}
+            {/* Formatting Row: Bold, Italic, Underline, Alignment, Color */}
             <div className="flex items-center justify-between">
               <div className="flex items-center border border-surface-300 rounded p-0.5 bg-surface-50">
                 <button
@@ -252,6 +260,7 @@ export const PropertiesSidebar: React.FC = () => {
                       fontWeight: selectedElem.fontWeight === 'bold' ? 'normal' : 'bold',
                     })
                   }
+                  title="Bold"
                   className={`p-1.5 rounded ${selectedElem.fontWeight === 'bold' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
                 >
                   <Bold className="w-3.5 h-3.5" />
@@ -262,9 +271,21 @@ export const PropertiesSidebar: React.FC = () => {
                       fontStyle: selectedElem.fontStyle === 'italic' ? 'normal' : 'italic',
                     })
                   }
+                  title="Italic"
                   className={`p-1.5 rounded ${selectedElem.fontStyle === 'italic' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
                 >
                   <Italic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      underline: !selectedElem.underline,
+                    })
+                  }
+                  title="Underline"
+                  className={`p-1.5 rounded ${selectedElem.underline ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
+                >
+                  <UnderlineIcon className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -299,6 +320,88 @@ export const PropertiesSidebar: React.FC = () => {
                 />
                 <span className="font-mono text-[10px] uppercase text-surface-600">{selectedElem.color || '#000'}</span>
               </div>
+            </div>
+
+            {/* Photoshop Text Shadow Section */}
+            <div className="p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-surface-800 text-[11px] flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedElem.textShadow)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        updateElement(selectedElem.id, {
+                          textShadow: { color: 'rgba(0,0,0,0.6)', blur: 1.5, offsetX: 0.8, offsetY: 0.8 },
+                        });
+                      } else {
+                        updateElement(selectedElem.id, { textShadow: undefined });
+                      }
+                    }}
+                    className="rounded text-brand-600"
+                  />
+                  <span>Drop Shadow</span>
+                </label>
+                {selectedElem.textShadow && (
+                  <input
+                    type="color"
+                    value={selectedElem.textShadow.color.startsWith('#') ? selectedElem.textShadow.color : '#000000'}
+                    onChange={(e) =>
+                      updateElement(selectedElem.id, {
+                        textShadow: { ...selectedElem.textShadow!, color: e.target.value },
+                      })
+                    }
+                    className="w-4 h-4 rounded cursor-pointer border-0 p-0"
+                  />
+                )}
+              </div>
+
+              {selectedElem.textShadow && (
+                <div className="grid grid-cols-3 gap-2 pt-1 text-[10px]">
+                  <div>
+                    <label className="text-surface-500 block mb-0.5">Blur (mm)</label>
+                    <input
+                      type="number"
+                      step="0.2"
+                      value={selectedElem.textShadow.blur}
+                      onChange={(e) =>
+                        updateElement(selectedElem.id, {
+                          textShadow: { ...selectedElem.textShadow!, blur: Number(e.target.value) },
+                        })
+                      }
+                      className="w-full px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-surface-500 block mb-0.5">Offset X</label>
+                    <input
+                      type="number"
+                      step="0.2"
+                      value={selectedElem.textShadow.offsetX}
+                      onChange={(e) =>
+                        updateElement(selectedElem.id, {
+                          textShadow: { ...selectedElem.textShadow!, offsetX: Number(e.target.value) },
+                        })
+                      }
+                      className="w-full px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-surface-500 block mb-0.5">Offset Y</label>
+                    <input
+                      type="number"
+                      step="0.2"
+                      value={selectedElem.textShadow.offsetY}
+                      onChange={(e) =>
+                        updateElement(selectedElem.id, {
+                          textShadow: { ...selectedElem.textShadow!, offsetY: Number(e.target.value) },
+                        })
+                      }
+                      className="w-full px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

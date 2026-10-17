@@ -39,16 +39,22 @@ export async function renderCardToCanvas(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // 1. Draw Background
+  // 1. Draw Background Color
   if (layout.backgroundColor) {
     ctx.fillStyle = layout.backgroundColor;
     ctx.fillRect(0, 0, widthPx, heightPx);
   }
 
+  // Draw Background Image
   if (layout.backgroundImageUrl) {
     try {
+      ctx.save();
+      if (layout.backgroundOpacity !== undefined) {
+        ctx.globalAlpha = layout.backgroundOpacity;
+      }
       const bgImg = await loadImage(layout.backgroundImageUrl);
       ctx.drawImage(bgImg, 0, 0, widthPx, heightPx);
+      ctx.restore();
     } catch (e) {
       console.warn('Failed to load background image:', e);
     }
@@ -153,7 +159,7 @@ async function renderElement(
           ? '500'
           : '400';
 
-      ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px ${elem.fontFamily || 'Inter'}, sans-serif`;
+      ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
       ctx.fillStyle = elem.color || '#000000';
       ctx.textBaseline = 'top';
 
@@ -168,11 +174,47 @@ async function renderElement(
         ctx.textAlign = 'left';
       }
 
+      // Photoshop-like text shadow
+      if (elem.textShadow) {
+        ctx.shadowColor = elem.textShadow.color || 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = mmToPx(elem.textShadow.blur, dpi);
+        ctx.shadowOffsetX = mmToPx(elem.textShadow.offsetX, dpi);
+        ctx.shadowOffsetY = mmToPx(elem.textShadow.offsetY, dpi);
+      }
+
       // Handle multi-line
       const lines = rawText.split('\n');
       const lineHeightPx = fontSizePx * (elem.lineHeight || 1.25);
       lines.forEach((line, idx) => {
-        ctx.fillText(line, textX, y + idx * lineHeightPx);
+        const lineY = y + idx * lineHeightPx;
+
+        // Draw text stroke if configured
+        if (elem.textStrokeColor && elem.textStrokeWidth) {
+          ctx.strokeStyle = elem.textStrokeColor;
+          ctx.lineWidth = mmToPx(elem.textStrokeWidth, dpi);
+          ctx.strokeText(line, textX, lineY);
+        }
+
+        ctx.fillText(line, textX, lineY);
+
+        // Draw Underline if enabled
+        if (elem.underline) {
+          const textMetrics = ctx.measureText(line);
+          const textW = textMetrics.width;
+          let lineStartX = textX;
+          if (elem.textAlign === 'center') {
+            lineStartX = textX - textW / 2;
+          } else if (elem.textAlign === 'right') {
+            lineStartX = textX - textW;
+          }
+          const underlineY = lineY + fontSizePx * 1.1;
+          ctx.beginPath();
+          ctx.strokeStyle = elem.color || '#000000';
+          ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+          ctx.moveTo(lineStartX, underlineY);
+          ctx.lineTo(lineStartX + textW, underlineY);
+          ctx.stroke();
+        }
       });
       break;
     }
@@ -186,7 +228,6 @@ async function renderElement(
       }
 
       if (!src) {
-        // Fallback placeholder box
         ctx.fillStyle = '#e2e8f0';
         ctx.fillRect(x, y, w, h);
         ctx.fillStyle = '#94a3b8';
@@ -256,7 +297,6 @@ async function renderElement(
     }
 
     case 'barcode': {
-      // Draw standard barcode representation
       let codeVal = elem.dataContent || '';
       if (elem.fieldKey && record[elem.fieldKey]) {
         codeVal = String(record[elem.fieldKey]);
@@ -265,7 +305,6 @@ async function renderElement(
       ctx.fillStyle = elem.backgroundColor || '#ffffff';
       ctx.fillRect(x, y, w, h);
 
-      // Render barcode bars simulation
       ctx.fillStyle = elem.color || '#000000';
       const numBars = 35;
       const barWidth = w / (numBars * 1.5);
@@ -276,7 +315,6 @@ async function renderElement(
         ctx.fillRect(bx, y + 2, bw, h - 8);
       }
 
-      // Barcode text label
       ctx.fillStyle = elem.color || '#000000';
       ctx.font = `${Math.max(9, mmToPx(2.2, dpi))}px monospace`;
       ctx.textAlign = 'center';
@@ -299,9 +337,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/**
- * Aspect ratio helper for contain/cover on canvas
- */
 function drawImageProp(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
