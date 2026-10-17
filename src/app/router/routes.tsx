@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout';
+import { AuthPage } from '../../features/auth/AuthPage';
 import { DashboardPage } from '../../features/dashboard/DashboardPage';
 import { TemplatesPage } from '../../features/templates/TemplatesPage';
 import { EditorPage } from '../../features/editor/EditorPage';
@@ -12,6 +13,10 @@ import { CustomRequestsPage } from '../../features/requests/CustomRequestsPage';
 import { SettingsPage } from '../../features/settings/SettingsPage';
 
 export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <AuthPage />,
+  },
   {
     path: '/',
     element: <AppLayout />,

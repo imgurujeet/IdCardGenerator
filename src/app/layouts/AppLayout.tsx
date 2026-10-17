@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Layout,
@@ -11,28 +11,78 @@ import {
   ChevronDown,
   Menu,
   X,
+  Plus,
+  LogOut,
+  Building2,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
+import { authService, AuthUser } from '../../services/auth.service';
 import { Organization } from '../../types/database';
 
 export const AppLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [currentOrgId, setCurrentOrgId] = useState(organizationService.getActiveOrgId());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // New Project / College Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [newOrgCategory, setNewOrgCategory] = useState('College');
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false);
+
   useEffect(() => {
-    async function loadOrgs() {
+    async function init() {
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+      setCurrentUser(user);
+
       const list = await organizationService.getOrganizations();
       setOrgs(list);
     }
-    loadOrgs();
-  }, []);
+    init();
+  }, [navigate]);
 
   const handleOrgChange = (newId: string) => {
     organizationService.setActiveOrgId(newId);
     setCurrentOrgId(newId);
     window.location.reload(); // Refresh to update active tenant state
+  };
+
+  const handleCreateCollege = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOrgName.trim()) return;
+
+    try {
+      setIsCreatingOrg(true);
+      const created = await organizationService.createOrganization({
+        name: newOrgName.trim(),
+        industry: newOrgCategory,
+      });
+
+      setShowCreateModal(false);
+      setNewOrgName('');
+      organizationService.setActiveOrgId(created.id);
+      setCurrentOrgId(created.id);
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to create college project:', err);
+      alert('Could not create college project. Please try again.');
+    } finally {
+      setIsCreatingOrg(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await authService.signOut();
+    navigate('/login');
   };
 
   const navItems = [
@@ -44,8 +94,6 @@ export const AppLayout: React.FC = () => {
     { to: '/requests', label: 'Design Requests', icon: Sparkles },
     { to: '/settings', label: 'Settings', icon: Settings },
   ];
-
-
 
   return (
     <div className="min-h-screen flex bg-surface-50">
@@ -60,21 +108,34 @@ export const AppLayout: React.FC = () => {
               </div>
               <div className="leading-tight">
                 <span className="font-bold text-sm text-surface-900 tracking-tight block">IDForge SaaS</span>
-                <span className="text-[10px] text-surface-400 block font-mono">v1.0 • Enterprise</span>
+                <span className="text-[10px] text-surface-400 block font-mono">v1.0 • Multi-College</span>
               </div>
             </div>
           </div>
 
-          {/* Organization Switcher */}
-          <div className="p-3 border-b border-surface-100">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-surface-400 block px-2 mb-1.5">
-              Workspace
-            </label>
+          {/* College / Project Switcher */}
+          <div className="p-3 border-b border-surface-100 bg-surface-50/50">
+            <div className="flex items-center justify-between px-2 mb-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-surface-500 flex items-center gap-1">
+                <Building2 className="w-3 h-3 text-brand-600" />
+                <span>Active College / Project</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                title="Create New College Project"
+                className="inline-flex items-center gap-0.5 text-[11px] font-bold text-brand-600 hover:text-brand-800 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                <span>New</span>
+              </button>
+            </div>
+
             <div className="relative">
               <select
                 value={currentOrgId}
                 onChange={(e) => handleOrgChange(e.target.value)}
-                className="w-full appearance-none bg-surface-50 hover:bg-surface-100/80 border border-surface-200 rounded-lg px-3 py-2 text-xs font-semibold text-surface-900 outline-none cursor-pointer pr-8 transition-colors"
+                className="w-full appearance-none bg-white hover:bg-surface-50 border border-surface-300 rounded-lg px-3 py-2 text-xs font-semibold text-surface-900 outline-none cursor-pointer pr-8 shadow-xs transition-colors"
               >
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -113,16 +174,30 @@ export const AppLayout: React.FC = () => {
           </nav>
         </div>
 
-        {/* User Profile Bar */}
-        <div className="p-4 border-t border-surface-200 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 truncate">
-            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">
-              SJ
+        {/* User Profile Bar & Sign Out */}
+        <div className="p-3 border-t border-surface-200 bg-surface-50/30">
+          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-surface-200 shadow-xs">
+            <div className="flex items-center gap-2 truncate">
+              <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">
+                {currentUser?.fullName?.charAt(0) || 'U'}
+              </div>
+              <div className="truncate text-xs">
+                <p className="font-bold text-surface-900 truncate leading-tight">
+                  {currentUser?.fullName || 'User'}
+                </p>
+                <p className="text-[10px] text-surface-400 truncate leading-tight">
+                  {currentUser?.email || 'Logged in'}
+                </p>
+              </div>
             </div>
-            <div className="truncate text-xs">
-              <p className="font-semibold text-surface-900 truncate">Dr. Sarah Jenkins</p>
-              <p className="text-[10px] text-surface-400 truncate">Administrator</p>
-            </div>
+
+            <button
+              onClick={handleSignOut}
+              title="Sign Out"
+              className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -138,12 +213,21 @@ export const AppLayout: React.FC = () => {
             <span className="font-bold text-sm text-surface-900">IDForge</span>
           </div>
 
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 text-surface-600 hover:text-surface-900 rounded-md"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-md font-semibold text-xs flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New College</span>
+            </button>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-1.5 text-surface-600 hover:text-surface-900 rounded-md"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </header>
 
         {/* Mobile Nav Overlay */}
@@ -160,6 +244,15 @@ export const AppLayout: React.FC = () => {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+            <div className="pt-2 border-t border-surface-100 flex items-center justify-between">
+              <span className="text-xs text-surface-500">{currentUser?.email}</span>
+              <button
+                onClick={handleSignOut}
+                className="text-xs font-semibold text-red-600 hover:underline"
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
         )}
 
@@ -168,6 +261,92 @@ export const AppLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Create New College / Project Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-surface-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-surface-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-surface-900">Create New College / Project</h3>
+                  <p className="text-[11px] text-surface-500">Each college has its own templates and registration link.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="p-1 text-surface-400 hover:text-surface-700 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCollege} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 mb-1">
+                  College or Organization Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  placeholder="e.g. Primary Teacher Education College Barh (Patna)"
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 mb-1">
+                  Institution Type / Category
+                </label>
+                <select
+                  value={newOrgCategory}
+                  onChange={(e) => setNewOrgCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white outline-none focus:border-brand-500 font-medium"
+                >
+                  <option value="Teacher Training College">Teacher Training College (PTEC / B.Ed / D.El.Ed)</option>
+                  <option value="Degree College">Degree / Arts / Science College</option>
+                  <option value="Higher Secondary School">Higher Secondary / High School</option>
+                  <option value="Coaching Institute">Coaching / Training Institute</option>
+                  <option value="Hospital / Healthcare">Hospital / Medical Center</option>
+                  <option value="Corporate / Company">Corporate / Company</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-surface-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-surface-600 hover:text-surface-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingOrg || !newOrgName.trim()}
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isCreatingOrg ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Create & Switch to College</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
