@@ -167,18 +167,24 @@ export const formService = {
   async getPublicFormBySlug(slug: string): Promise<FormEntity | null> {
     if (isLiveSupabaseConfigured) {
       try {
-        const { data, error } = await supabase
-          .from('forms')
-          .select('*')
-          .or(`public_slug.eq.${slug},id.eq.${slug}`)
-          .eq('is_published', true)
-          .maybeSingle();
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+        let query = supabase.from('forms').select('*').eq('is_published', true);
+
+        if (isUuid) {
+          query = query.or(`public_slug.eq.${slug},id.eq.${slug}`);
+        } else {
+          query = query.eq('public_slug', slug);
+        }
+
+        const { data, error } = await query.maybeSingle();
 
         if (!error && data) {
           // Sync live form to local cache so it is available
           const local = getStoredLocalForms().filter((f) => f.id !== data.id && f.public_slug !== data.public_slug);
           saveStoredLocalForms([data, ...local]);
           return data;
+        } else if (error) {
+          console.warn('getPublicFormBySlug Supabase query error:', error.message);
         }
       } catch (err) {
         console.warn('getPublicFormBySlug Supabase error:', err);
