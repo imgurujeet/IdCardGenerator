@@ -127,7 +127,7 @@ export const templateService = {
     }
 
     // Default template fallbacks
-    if (templateId === 'ptec-primary-v1' || templateId.includes('ptec')) {
+    if (templateId === 'ptec-primary-v1') {
       const ptecVersion: TemplateVersionEntity = {
         id: `ver-${templateId}-1`,
         template_id: templateId,

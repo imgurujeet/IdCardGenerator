@@ -165,16 +165,6 @@ export const formService = {
   },
 
   async getPublicFormBySlug(slug: string): Promise<FormEntity | null> {
-    const local = getStoredLocalForms();
-    const localMatch = local.find(
-      (f) =>
-        (f.public_slug === slug ||
-          f.id === slug ||
-          (slug.includes('ptec') && f.public_slug.includes('ptec'))) &&
-        f.is_published
-    );
-    if (localMatch) return localMatch;
-
     if (isLiveSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -183,11 +173,24 @@ export const formService = {
           .or(`public_slug.eq.${slug},id.eq.${slug}`)
           .eq('is_published', true)
           .maybeSingle();
-        if (!error && data) return data;
+
+        if (!error && data) {
+          // Sync live form to local cache so it is available
+          const local = getStoredLocalForms().filter((f) => f.id !== data.id && f.public_slug !== data.public_slug);
+          saveStoredLocalForms([data, ...local]);
+          return data;
+        }
       } catch (err) {
         console.warn('getPublicFormBySlug Supabase error:', err);
       }
     }
+
+    // Local fallback for offline/demo mode only with exact match
+    const local = getStoredLocalForms();
+    const localMatch = local.find(
+      (f) => (f.public_slug === slug || f.id === slug) && f.is_published
+    );
+    if (localMatch) return localMatch;
 
     return null;
   },
@@ -365,7 +368,7 @@ export const formService = {
       recordId = record.id;
     }
 
-    const subId = generateUUID();
+    let subId = generateUUID();
     const newSub: FormSubmissionEntity = {
       id: subId,
       organization_id: form.organization_id,
@@ -382,9 +385,24 @@ export const formService = {
 
     if (isLiveSupabaseConfigured) {
       try {
-        const { error: subErr } = await supabase.from('form_submissions').insert([newSub]);
-        if (subErr) {
-          console.warn('Supabase form_submissions insert error:', subErr.message);
+        // First try the secure SECURITY DEFINER RPC designed for public anonymous submissions
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('submit_public_form', {
+          p_slug: form.public_slug,
+          p_data: data,
+        });
+
+        if (!rpcErr && rpcRes && (rpcRes.submission_id || rpcRes.success)) {
+          if (rpcRes.submission_id) {
+            subId = rpcRes.submission_id;
+            newSub.id = subId;
+            saveStoredLocalSubmissions([newSub, ...localSubs]);
+          }
+        } else {
+          // Fallback direct insert if user is authenticated or RPC is missing
+          const { error: subErr } = await supabase.from('form_submissions').insert([newSub]);
+          if (subErr) {
+            console.warn('Supabase form_submissions insert error:', subErr.message);
+          }
         }
       } catch (e) {
         console.warn('Supabase form submission exception:', e);
