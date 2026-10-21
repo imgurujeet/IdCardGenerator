@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
 import { FormEntity, FormSubmissionEntity } from '../../types/database';
@@ -16,6 +17,7 @@ export const FormSubmissionsPage: React.FC = () => {
   const [form, setForm] = useState<FormEntity | null>(null);
   const [submissions, setSubmissions] = useState<FormSubmissionEntity[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved' | 'rejected'>('all');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const loadData = async () => {
     if (!formId) return;
@@ -36,8 +38,20 @@ export const FormSubmissionsPage: React.FC = () => {
   }, [formId]);
 
   const handleUpdateStatus = async (subId: string, status: 'approved' | 'rejected') => {
-    await formService.updateSubmissionStatus(subId, status, true);
-    loadData();
+    setUpdatingId(subId);
+    try {
+      const success = await formService.updateSubmissionStatus(subId, status, true);
+      if (success) {
+        await loadData();
+      } else {
+        alert('Failed to update submission status.');
+      }
+    } catch (err: any) {
+      console.error('Failed to update submission status:', err);
+      alert(err.message || 'Error updating status');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const filteredSubs = submissions.filter((s) => {
@@ -114,17 +128,26 @@ export const FormSubmissionsPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-surface-100">
               {filteredSubs.map((sub) => {
+                const data = sub.data || {};
                 const name =
-                  sub.data['student_name'] ||
-                  sub.data['employee_name'] ||
-                  sub.data['full_name'] ||
+                  data['student_name'] ||
+                  data['candidate_name'] ||
+                  data['full_name'] ||
+                  data['name'] ||
+                  data['employee_name'] ||
                   'Unknown';
                 const id =
-                  sub.data['student_id'] ||
-                  sub.data['employee_id'] ||
-                  sub.data['identifier'] ||
+                  data['student_roll'] ||
+                  data['roll_no'] ||
+                  data['roll'] ||
+                  data['student_id'] ||
+                  data['employee_id'] ||
+                  data['Mobile_number'] ||
+                  data['mobile'] ||
+                  data['identifier'] ||
                   'N/A';
-                const photo = sub.data['photo_url'];
+                const photo = data['photo_url'] || data['photo'] || data['image'];
+                const isUpdating = updatingId === sub.id;
 
                 return (
                   <tr key={sub.id} className="hover:bg-surface-50/70 transition-colors">
@@ -147,16 +170,30 @@ export const FormSubmissionsPage: React.FC = () => {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="text-xs text-surface-600 space-y-0.5">
-                        {sub.data['grade'] && (
+                        {data['student_roll'] && (
                           <p>
-                            <span className="font-medium text-surface-700">Class:</span> {sub.data['grade']}{' '}
-                            {sub.data['section']}
+                            <span className="font-medium text-surface-700">Roll:</span> {data['student_roll']}
                           </p>
                         )}
-                        {sub.data['blood_group'] && (
+                        {data['session'] && (
+                          <p>
+                            <span className="font-medium text-surface-700">Session:</span> {data['session']}
+                          </p>
+                        )}
+                        {data['Father_name'] && (
+                          <p>
+                            <span className="font-medium text-surface-700">Father:</span> {data['Father_name']}
+                          </p>
+                        )}
+                        {data['Mobile_number'] && (
+                          <p>
+                            <span className="font-medium text-surface-700">Mobile:</span> {data['Mobile_number']}
+                          </p>
+                        )}
+                        {data['blood_group'] && (
                           <p>
                             <span className="font-medium text-surface-700">Blood:</span>{' '}
-                            <span className="font-bold text-red-600">{sub.data['blood_group']}</span>
+                            <span className="font-bold text-red-600">{data['blood_group']}</span>
                           </p>
                         )}
                       </div>
@@ -181,21 +218,27 @@ export const FormSubmissionsPage: React.FC = () => {
                       {sub.status === 'submitted' ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            disabled={isUpdating}
                             onClick={() => handleUpdateStatus(sub.id, 'approved')}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors"
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors disabled:opacity-50"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {isUpdating ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            )}
                             <span>Approve</span>
                           </button>
                           <button
+                            disabled={isUpdating}
                             onClick={() => handleUpdateStatus(sub.id, 'rejected')}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors"
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors disabled:opacity-50"
                           >
                             <XCircle className="w-3.5 h-3.5" />
                             <span>Reject</span>
                           </button>
                         </div>
-                      ) : sub.status === 'approved' && sub.record_id ? (
+                      ) : sub.status === 'approved' ? (
                         <button
                           onClick={() => navigate('/records')}
                           className="text-xs font-medium text-brand-600 hover:text-brand-700 underline"

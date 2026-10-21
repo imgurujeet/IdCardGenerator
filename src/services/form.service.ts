@@ -450,43 +450,94 @@ export const formService = {
     convertToRecord: boolean = true
   ): Promise<boolean> {
     const local = getStoredLocalSubmissions();
-    const sub = local.find((s) => s.id === submissionId);
-    if (!sub) return false;
+    let sub = local.find((s) => s.id === submissionId);
+
+    // If not found in local cache, fetch from live Supabase
+    if (!sub && isLiveSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('form_submissions')
+          .select('*')
+          .eq('id', submissionId)
+          .single();
+        if (!error && data) {
+          sub = data;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch submission from Supabase:', e);
+      }
+    }
+
+    if (!sub) {
+      console.warn('Submission not found to update:', submissionId);
+      return false;
+    }
 
     sub.status = status;
     sub.updated_at = new Date().toISOString();
 
-    if (status === 'approved' && convertToRecord && !sub.record_id) {
+    if (status === 'approved' && convertToRecord) {
+      const data = sub.data || {};
       const identifier =
-        sub.data['student_id'] ||
-        sub.data['employee_id'] ||
-        sub.data['identifier'] ||
-        `SUB-${sub.id.substring(4, 9)}`;
+        data['student_roll'] ||
+        data['roll_no'] ||
+        data['roll'] ||
+        data['student_id'] ||
+        data['employee_id'] ||
+        data['admission_no'] ||
+        data['Mobile_number'] ||
+        data['mobile'] ||
+        data['phone'] ||
+        data['identifier'] ||
+        `SUB-${sub.id.substring(0, 8)}`;
 
       const fullName =
-        sub.data['student_name'] ||
-        sub.data['employee_name'] ||
-        sub.data['full_name'] ||
-        sub.data['name'] ||
-        'Approved Submitter';
+        data['student_name'] ||
+        data['candidate_name'] ||
+        data['full_name'] ||
+        data['name'] ||
+        data['employee_name'] ||
+        'Approved Student';
 
-      const record = await recordService.createRecord(sub.organization_id, {
-        identifier,
-        fullName,
-        data: sub.data,
-        status: 'approved',
-      });
-      sub.record_id = record.id;
+      try {
+        const record = await recordService.createRecord(sub.organization_id, {
+          identifier: String(identifier),
+          fullName: String(fullName),
+          data: {
+            ...data,
+            student_name: fullName,
+            full_name: fullName,
+            student_id: identifier,
+            student_roll: identifier,
+            roll_no: identifier,
+            photo_url: data['photo_url'] || data['photo'] || '',
+          },
+          status: 'approved',
+        });
+        sub.record_id = record.id;
+      } catch (recErr) {
+        console.warn('Failed to create record during approval:', recErr);
+      }
     }
 
-    saveStoredLocalSubmissions(local);
+    // Save in local storage
+    const updatedLocal = [sub, ...local.filter((s) => s.id !== sub.id)];
+    saveStoredLocalSubmissions(updatedLocal);
 
     if (isLiveSupabaseConfigured) {
       try {
-        await supabase
+        const { error } = await supabase
           .from('form_submissions')
-          .update({ status, record_id: sub.record_id, updated_at: sub.updated_at })
+          .update({
+            status,
+            record_id: sub.record_id,
+            updated_at: sub.updated_at,
+          })
           .eq('id', submissionId);
+
+        if (error) {
+          console.warn('updateSubmissionStatus Supabase error:', error.message);
+        }
       } catch (e) {
         console.warn('updateSubmissionStatus Supabase error:', e);
       }

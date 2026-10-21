@@ -22,40 +22,107 @@ function saveStoredLocalRecords(list: RecordEntity[]) {
   }
 }
 
+export function extractRecordDetails(data: Record<string, any>, fallbackId: string) {
+  const identifier =
+    data.student_roll ||
+    data.roll_no ||
+    data.roll ||
+    data.student_id ||
+    data.employee_id ||
+    data.admission_no ||
+    data.Mobile_number ||
+    data.mobile ||
+    data.phone ||
+    data.identifier ||
+    `REC-${fallbackId.substring(0, 8)}`;
+
+  const fullName =
+    data.student_name ||
+    data.candidate_name ||
+    data.full_name ||
+    data.name ||
+    data.employee_name ||
+    'Student';
+
+  return { identifier: String(identifier), fullName: String(fullName) };
+}
+
 export const recordService = {
   async getRecords(orgId: string, options: RecordFilterOptions = {}): Promise<{ records: RecordEntity[]; total: number }> {
-    const local = getStoredLocalRecords().filter((r) => r.organization_id === orgId);
+    const local = getStoredLocalRecords().filter((r) => !orgId || r.organization_id === orgId);
+    let combined: RecordEntity[] = [...local];
 
     if (isLiveSupabaseConfigured) {
       try {
-        let query = supabase.from('records').select('*', { count: 'exact' }).eq('organization_id', orgId);
-
-        if (options.status && options.status !== 'all') {
-          query = query.eq('status', options.status);
-        }
-        if (options.source && options.source !== 'all') {
-          query = query.eq('source', options.source);
-        }
-        if (options.search) {
-          query = query.or(`full_name.ilike.%${options.search}%,identifier.ilike.%${options.search}%`);
+        let query = supabase.from('records').select('*');
+        if (orgId) {
+          query = query.eq('organization_id', orgId);
         }
 
-        const { data, count, error } = await query.order('created_at', { ascending: false });
-        if (!error && data) {
-          const combined = [...data];
+        const { data: dbRecords, error } = await query.order('created_at', { ascending: false });
+        if (!error && dbRecords) {
+          combined = [...dbRecords];
           for (const l of local) {
             if (!combined.some((c) => c.id === l.id || c.identifier === l.identifier)) {
               combined.push(l);
             }
           }
-          return { records: combined, total: count || combined.length };
+        }
+
+        // Also query form_submissions for this organization so submitted student responses display in Records
+        let subQuery = supabase.from('form_submissions').select('*');
+        if (orgId) {
+          subQuery = subQuery.eq('organization_id', orgId);
+        }
+        const { data: subsData, error: subsError } = await subQuery.order('created_at', { ascending: false });
+
+        if (!subsError && subsData && subsData.length > 0) {
+          for (const sub of subsData) {
+            if (sub.status === 'rejected') continue;
+            const { identifier, fullName } = extractRecordDetails(sub.data || {}, sub.id);
+            const alreadyExists = combined.some(
+              (r) => r.id === sub.record_id || r.id === sub.id || r.identifier === identifier
+            );
+
+            if (!alreadyExists) {
+              const mappedRecord: RecordEntity = {
+                id: sub.record_id || sub.id,
+                organization_id: sub.organization_id,
+                identifier,
+                full_name: fullName,
+                data: {
+                  ...sub.data,
+                  student_name: fullName,
+                  full_name: fullName,
+                  student_id: identifier,
+                  student_roll: identifier,
+                  roll_no: identifier,
+                  photo_url: sub.data?.photo_url || sub.data?.photo || '',
+                },
+                status: 'approved',
+                source: 'form_submission',
+                created_at: sub.created_at,
+                updated_at: sub.updated_at,
+              };
+
+              combined.push(mappedRecord);
+
+              // Proactively persist to Supabase records table
+              supabase
+                .from('records')
+                .upsert([mappedRecord], { onConflict: 'organization_id,identifier' })
+                .then(({ error: upErr }) => {
+                  if (upErr) console.warn('Sync form submission to records table notice:', upErr.message);
+                });
+            }
+          }
         }
       } catch (err) {
-        console.warn('Failed to query Supabase records:', err);
+        console.warn('Failed to query Supabase records/submissions:', err);
       }
     }
 
-    let items = [...local];
+    let items = [...combined];
 
     if (options.status && options.status !== 'all') {
       items = items.filter((r) => r.status === options.status);

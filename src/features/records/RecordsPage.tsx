@@ -369,7 +369,7 @@ export const RecordsPage: React.FC = () => {
           <tbody className="divide-y divide-surface-100">
             {records.map((rec) => {
               const isSelected = selectedIds.includes(rec.id);
-              const photo = rec.data['photo_url'];
+              const photo = rec.data['photo_url'] || rec.data['photo'] || rec.data['image'];
 
               return (
                 <tr
@@ -407,6 +407,8 @@ export const RecordsPage: React.FC = () => {
                   </td>
                   <td className="px-5 py-3.5 text-surface-600">
                     {rec.data['grade'] && <span>{rec.data['grade']} • </span>}
+                    {rec.data['session'] && <span>{rec.data['session']} • </span>}
+                    {rec.data['Father_name'] && <span className="text-surface-500">F: {rec.data['Father_name']} • </span>}
                     {rec.data['blood_group'] && (
                       <span className="font-semibold text-red-600">{rec.data['blood_group']}</span>
                     )}
