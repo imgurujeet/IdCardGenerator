@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Trash2,
   Image as ImageIcon,
+  Archive,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
 import { recordService } from '../../services/record.service';
@@ -20,8 +21,8 @@ import { RecordEntity, TemplateEntity } from '../../types/database';
 import { CSVColumnMapping } from '../../types/record';
 import { generateSingleCardPdf, generatePrintSheetPdf } from '../generation/renderer/pdfExporter';
 import { generateSingleCardJpg } from '../generation/renderer/canvasRenderer';
-import { generateIndividualCardsZip } from '../generation/renderer/zipExporter';
-import { triggerDownload } from '../../lib/utils';
+import { generateSingleCardZip, generateIndividualCardsZip } from '../generation/renderer/zipExporter';
+import { triggerDownload, getRecordDisplayName, getRecordDisplayRoll, sanitizeFilenamePart } from '../../lib/utils';
 import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
 
 export const RecordsPage: React.FC = () => {
@@ -178,6 +179,8 @@ export const RecordsPage: React.FC = () => {
     }
   };
 
+  const [downloadingCardId, setDownloadingCardId] = useState<string | null>(null);
+
   // Bulk Generation Execution
   const handleExecuteGeneration = async () => {
     if (!genTemplateId) return;
@@ -186,8 +189,8 @@ export const RecordsPage: React.FC = () => {
       setIsGenerating(true);
       const targetRecords =
         selectedIds.length > 0
-          ? records.filter((r) => selectedIds.includes(r.id)).map((r) => r.data)
-          : records.filter((r) => r.status === 'approved').map((r) => r.data);
+          ? records.filter((r) => selectedIds.includes(r.id)).map((r) => ({ ...r, ...(r.data || {}) }))
+          : records.filter((r) => r.status === 'approved').map((r) => ({ ...r, ...(r.data || {}) }));
 
       if (targetRecords.length === 0) {
         alert('No eligible records selected for card generation.');
@@ -220,7 +223,7 @@ export const RecordsPage: React.FC = () => {
         );
 
         const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
-        triggerDownload(blob, `ID_Print_Sheet_${doc.name.replace(/\s+/g, '_')}_A4.pdf`);
+        triggerDownload(blob, `ID_Print_Sheet_${sanitizeFilenamePart(doc.name)}_A4.pdf`);
       } else {
         // Bulk ZIP Archive with selected format (JPG, PNG, PDF)
         const zipBlob = await generateIndividualCardsZip(
@@ -232,7 +235,7 @@ export const RecordsPage: React.FC = () => {
         );
         triggerDownload(
           zipBlob,
-          `ID_Cards_${zipFormat.toUpperCase()}_Bundle_${doc.name.replace(/\s+/g, '_')}.zip`
+          `ID_Cards_${zipFormat.toUpperCase()}_Bundle_${sanitizeFilenamePart(doc.name)}.zip`
         );
       }
 
@@ -246,34 +249,115 @@ export const RecordsPage: React.FC = () => {
     }
   };
 
+  // Direct One-Click Bulk Download for All JPGs (Front & Back ZIP)
+  const handleQuickBulkDownloadJpgZip = async () => {
+    const targetRecords =
+      selectedIds.length > 0
+        ? records.filter((r) => selectedIds.includes(r.id)).map((r) => ({ ...r, ...(r.data || {}) }))
+        : records.filter((r) => r.status === 'approved').map((r) => ({ ...r, ...(r.data || {}) }));
+
+    const pool = targetRecords.length > 0 ? targetRecords : records.map((r) => ({ ...r, ...(r.data || {}) }));
+
+    if (pool.length === 0) {
+      alert('No student records found to export.');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      setGenProgress({ current: 0, total: pool.length });
+      const targetTmplId = genTemplateId || templates[0]?.id || '';
+      const tmplRes = targetTmplId ? await templateService.getTemplateById(targetTmplId) : null;
+      const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
+
+      const zipBlob = await generateIndividualCardsZip(
+        doc,
+        pool,
+        'jpg',
+        true, // always include both front and back
+        (completed, total) => setGenProgress({ current: completed, total })
+      );
+
+      const docName = sanitizeFilenamePart(doc.name) || 'ID_Cards';
+      triggerDownload(
+        zipBlob,
+        `Bulk_All_JPGs_${docName}_(${pool.length}_Students).zip`
+      );
+    } catch (err: any) {
+      console.error('Bulk JPG download failed:', err);
+      alert('Bulk JPG download error: ' + (err?.message || err));
+    } finally {
+      setIsGenerating(false);
+      setGenProgress(null);
+    }
+  };
+
+  // Single Card Download Helper (Both Sides Front & Back JPG ZIP)
+  const handleDownloadSingleCardBothZip = async (record: RecordEntity) => {
+    try {
+      setDownloadingCardId(`${record.id}-both`);
+      const targetTmplId = genTemplateId || templates[0]?.id || '';
+      const tmplRes = targetTmplId ? await templateService.getTemplateById(targetTmplId) : null;
+      const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
+      const cardData = { ...record, ...(record.data || {}) };
+      const zipBlob = await generateSingleCardZip(doc, cardData, 'jpg');
+      const roll = sanitizeFilenamePart(getRecordDisplayRoll(cardData) || record.identifier);
+      const name = sanitizeFilenamePart(getRecordDisplayName(cardData) || record.full_name);
+      triggerDownload(
+        zipBlob,
+        `${roll}_${name}_ID_Card_JPG.zip`
+      );
+    } catch (e) {
+      console.error('Download Both Sides ZIP error:', e);
+      alert('Failed to generate card images. Please check template images.');
+    } finally {
+      setDownloadingCardId(null);
+    }
+  };
+
   // Single Card Download Helper (PDF)
   const handleDownloadSingleCardPdf = async (record: RecordEntity) => {
     try {
-      const tmplRes = await templateService.getTemplateById(templates[0]?.id || '');
+      setDownloadingCardId(`${record.id}-pdf`);
+      const targetTmplId = genTemplateId || templates[0]?.id || '';
+      const tmplRes = targetTmplId ? await templateService.getTemplateById(targetTmplId) : null;
       const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
-      const pdfBytes = await generateSingleCardPdf(doc, record.data, true);
+      const cardData = { ...record, ...(record.data || {}) };
+      const pdfBytes = await generateSingleCardPdf(doc, cardData, true);
       const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
-      triggerDownload(blob, `${record.identifier}_${record.full_name.replace(/\s+/g, '_')}.pdf`);
+      const roll = sanitizeFilenamePart(getRecordDisplayRoll(cardData) || record.identifier);
+      const name = sanitizeFilenamePart(getRecordDisplayName(cardData) || record.full_name);
+      triggerDownload(blob, `${roll}_${name}.pdf`);
     } catch (e) {
       console.error('Download error:', e);
+    } finally {
+      setDownloadingCardId(null);
     }
   };
 
   // Single Card Download Helper (JPG 300 DPI)
   const handleDownloadSingleCardJpg = async (record: RecordEntity, side: 'front' | 'back' = 'front') => {
     try {
-      const tmplRes = await templateService.getTemplateById(templates[0]?.id || '');
+      setDownloadingCardId(`${record.id}-${side}`);
+      const targetTmplId = genTemplateId || templates[0]?.id || '';
+      const tmplRes = targetTmplId ? await templateService.getTemplateById(targetTmplId) : null;
       const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
-      const jpgBlob = await generateSingleCardJpg(doc, record.data, side, 0.95);
+      const cardData = { ...record, ...(record.data || {}) };
+      const jpgBlob = await generateSingleCardJpg(doc, cardData, side, 0.95);
+      const roll = sanitizeFilenamePart(getRecordDisplayRoll(cardData) || record.identifier);
+      const name = sanitizeFilenamePart(getRecordDisplayName(cardData) || record.full_name);
       triggerDownload(
         jpgBlob,
-        `${record.identifier}_${record.full_name.replace(/\s+/g, '_')}_${side}.jpg`
+        `${roll}_${name}_${side}.jpg`
       );
     } catch (e) {
       console.error('Download JPG error:', e);
       alert('Failed to generate JPG. Please check template images.');
+    } finally {
+      setDownloadingCardId(null);
     }
   };
+
 
   // Delete Handlers
   const handleDeleteRecord = async (id: string, name: string) => {
@@ -313,7 +397,27 @@ export const RecordsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={handleQuickBulkDownloadJpgZip}
+            disabled={isGenerating || records.length === 0}
+            title="Download Front & Back JPGs for all students in a ZIP file"
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-subtle transition-colors"
+          >
+            <Archive className="w-4 h-4 text-emerald-100" />
+            <span>{isGenerating ? 'Generating ZIP...' : 'Bulk Download JPGs (ZIP)'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowGenModal(true)}
+            disabled={records.length === 0}
+            title="Open batch generator for print sheets or custom formats"
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-surface-700 bg-white border border-surface-300 hover:border-surface-400 rounded-lg shadow-subtle transition-colors"
+          >
+            <Printer className="w-4 h-4 text-surface-500" />
+            <span>Batch Generator</span>
+          </button>
+
           <button
             onClick={() => {
               setCsvStep(1);
@@ -450,27 +554,56 @@ export const RecordsPage: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="flex items-center justify-end gap-1.5 flex-wrap sm:flex-nowrap">
+                      {/* Download Both Sides Front & Back JPG in a single ZIP */}
+                      <button
+                        onClick={() => handleDownloadSingleCardBothZip(rec)}
+                        disabled={downloadingCardId === `${rec.id}-both`}
+                        title="Download Both Front & Back JPG in a ZIP with Student Name & Roll"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-md shadow-2xs transition-colors disabled:opacity-50"
+                      >
+                        <Archive className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>{downloadingCardId === `${rec.id}-both` ? '...' : 'Both (ZIP)'}</span>
+                      </button>
+
+                      {/* Front JPG */}
                       <button
                         onClick={() => handleDownloadSingleCardJpg(rec, 'front')}
+                        disabled={downloadingCardId === `${rec.id}-front`}
                         title="Download Front as 300 DPI JPG"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md shadow-2xs transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors disabled:opacity-50"
                       >
-                        <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>JPG</span>
+                        <ImageIcon className="w-3 h-3 text-emerald-600" />
+                        <span>Front</span>
                       </button>
+
+                      {/* Back JPG */}
+                      <button
+                        onClick={() => handleDownloadSingleCardJpg(rec, 'back')}
+                        disabled={downloadingCardId === `${rec.id}-back`}
+                        title="Download Back as 300 DPI JPG"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors disabled:opacity-50"
+                      >
+                        <ImageIcon className="w-3 h-3 text-emerald-600" />
+                        <span>Back</span>
+                      </button>
+
+                      {/* PDF */}
                       <button
                         onClick={() => handleDownloadSingleCardPdf(rec)}
+                        disabled={downloadingCardId === `${rec.id}-pdf`}
                         title="Download Vector PDF"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-surface-700 hover:text-brand-700 bg-white hover:bg-brand-50 border border-surface-300 rounded-md shadow-xs transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-surface-700 hover:text-brand-700 bg-white hover:bg-brand-50 border border-surface-300 rounded-md shadow-xs transition-colors disabled:opacity-50"
                       >
-                        <Printer className="w-3.5 h-3.5 text-brand-600" />
+                        <Printer className="w-3 h-3 text-brand-600" />
                         <span>PDF</span>
                       </button>
+
+                      {/* Delete */}
                       <button
                         onClick={() => handleDeleteRecord(rec.id, rec.full_name)}
                         title="Delete record"
-                        className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200 transition-colors"
+                        className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -484,18 +617,27 @@ export const RecordsPage: React.FC = () => {
 
         {/* Floating Bulk Action Bar */}
         {selectedIds.length > 0 && (
-          <div className="sticky bottom-4 left-1/2 -translate-x-1/2 w-max max-w-lg bg-surface-900 text-white rounded-xl shadow-card px-5 py-3 flex items-center justify-between gap-4 z-30 mx-auto border border-surface-700">
+          <div className="sticky bottom-4 left-1/2 -translate-x-1/2 w-max max-w-xl bg-surface-900 text-white rounded-xl shadow-card px-5 py-3 flex items-center justify-between gap-4 z-30 mx-auto border border-surface-700">
             <span className="text-xs font-medium">
               <span className="font-bold text-brand-400">{selectedIds.length}</span> records selected
             </span>
 
             <div className="flex items-center gap-2">
               <button
+                onClick={handleQuickBulkDownloadJpgZip}
+                disabled={isGenerating}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                title="Download Front & Back JPGs for selected students in a ZIP file"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>Download JPGs ({selectedIds.length})</span>
+              </button>
+              <button
                 onClick={() => setShowGenModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Batch Print Cards</span>
+                <span>Batch Generator</span>
               </button>
               <button
                 onClick={handleBulkDelete}
@@ -514,6 +656,30 @@ export const RecordsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Floating Batch Generation Progress Bar (visible during quick bulk download) */}
+      {genProgress && !showGenModal && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-brand-200 p-4 max-w-sm w-full animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between text-xs font-bold text-brand-900 mb-1.5">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
+              Generating Bulk JPG Cards...
+            </span>
+            <span>
+              {genProgress.current} / {genProgress.total}
+            </span>
+          </div>
+          <div className="w-full bg-brand-100 h-2.5 rounded-full overflow-hidden">
+            <div
+              className="bg-brand-600 h-full transition-all duration-200"
+              style={{ width: `${(genProgress.current / genProgress.total) * 100}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-surface-500 mt-2">
+            Rendering high-res Front & Back 300 DPI images with proper Student Names & Rolls...
+          </p>
+        </div>
+      )}
 
       {/* Add Single Record Modal */}
       {showAddModal && (
@@ -795,7 +961,7 @@ export const RecordsPage: React.FC = () => {
                   >
                     <p className="font-semibold">Individual Files (ZIP)</p>
                     <p className="text-[10px] text-surface-500 font-normal mt-0.5">
-                      1 high-res file per student inside archive
+                      Both Front & Back high-res images per student in ZIP
                     </p>
                   </button>
                 </div>
@@ -814,7 +980,7 @@ export const RecordsPage: React.FC = () => {
                         }`}
                       >
                         <p className="font-bold">JPG (300 DPI)</p>
-                        <p className="text-[9px] font-normal text-surface-500 mt-0.5">Recommended</p>
+                        <p className="text-[9px] font-normal text-surface-500 mt-0.5">Front & Back JPGs</p>
                       </button>
 
                       <button
@@ -855,7 +1021,7 @@ export const RecordsPage: React.FC = () => {
                     onChange={(e) => setIncludeBack(e.target.checked)}
                     className="rounded text-brand-600 focus:ring-brand-500"
                   />
-                  <span>Include Card Backside Layout (Duplex Flip)</span>
+                  <span>Include Card Backside Layout (Both Front & Back)</span>
                 </label>
               </div>
 

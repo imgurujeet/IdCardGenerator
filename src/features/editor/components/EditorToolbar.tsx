@@ -23,7 +23,10 @@ import {
   Home,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Image as ImageIcon,
+  Archive,
+  Layers,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { templateService } from '../../../services/template.service';
@@ -31,7 +34,8 @@ import { formService } from '../../../services/form.service';
 import { organizationService } from '../../../services/organization.service';
 import { generateSingleCardPdf } from '../../generation/renderer/pdfExporter';
 import { generateSingleCardJpg } from '../../generation/renderer/canvasRenderer';
-import { triggerDownload } from '../../../lib/utils';
+import { generateSingleCardZip, generateIndividualCardsZip } from '../../generation/renderer/zipExporter';
+import { triggerDownload, getRecordDisplayName, getRecordDisplayRoll, sanitizeFilenamePart } from '../../../lib/utils';
 import { FormFieldType } from '../../../types/form';
 
 interface ExtractedField {
@@ -121,28 +125,76 @@ export const EditorToolbar: React.FC = () => {
   };
 
   const [isExportingJpg, setIsExportingJpg] = useState(false);
-  const handleExportJpg = async () => {
+  const [exportingLabel, setExportingLabel] = useState<string>('');
+  const [showJpgMenu, setShowJpgMenu] = useState(false);
+
+  // Export both front & back JPG inside a single ZIP
+  const handleExportBothSidesZip = async () => {
     if (!doc) return;
     try {
       setIsExportingJpg(true);
+      setExportingLabel('Exporting Both...');
       const activeRecord = availableSampleRecords[sampleRecordIndex] || {};
-      const jpgBlob = await generateSingleCardJpg(doc, activeRecord, activeSide, 0.95);
-      const candidateName =
-        activeRecord.student_name ||
-        activeRecord.employee_name ||
-        activeRecord.full_name ||
-        'ID_Card';
-      triggerDownload(
-        jpgBlob,
-        `${candidateName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${activeSide}.jpg`
-      );
+      const zipBlob = await generateSingleCardZip(doc, activeRecord, 'jpg');
+      const roll = sanitizeFilenamePart(getRecordDisplayRoll(activeRecord, sampleRecordIndex));
+      const name = sanitizeFilenamePart(getRecordDisplayName(activeRecord));
+      triggerDownload(zipBlob, `${roll}_${name}_ID_Card_JPG.zip`);
+    } catch (err) {
+      console.error('Export both sides error:', err);
+      alert('Failed to export card images. Please check template images.');
+    } finally {
+      setIsExportingJpg(false);
+      setExportingLabel('');
+      setShowJpgMenu(false);
+    }
+  };
+
+  // Export single side (front or back) as high-res 300 DPI JPG
+  const handleExportSingleSideJpg = async (side: 'front' | 'back') => {
+    if (!doc) return;
+    try {
+      setIsExportingJpg(true);
+      setExportingLabel(`Exporting ${side === 'front' ? 'Front' : 'Back'}...`);
+      const activeRecord = availableSampleRecords[sampleRecordIndex] || {};
+      const jpgBlob = await generateSingleCardJpg(doc, activeRecord, side, 0.95);
+      const roll = sanitizeFilenamePart(getRecordDisplayRoll(activeRecord, sampleRecordIndex));
+      const name = sanitizeFilenamePart(getRecordDisplayName(activeRecord));
+      triggerDownload(jpgBlob, `${roll}_${name}_${side}.jpg`);
     } catch (err) {
       console.error('Export JPG error:', err);
       alert('Failed to export JPG. Please check template images.');
     } finally {
       setIsExportingJpg(false);
+      setExportingLabel('');
+      setShowJpgMenu(false);
     }
   };
+
+  // Bulk Export all sample/form records as Front & Back JPGs inside a ZIP
+  const handleExportBulkAllJpgZip = async () => {
+    if (!doc) return;
+    const recordsToExport = availableSampleRecords.length > 0 ? availableSampleRecords : [{}];
+    try {
+      setIsExportingJpg(true);
+      setExportingLabel(`Exporting ${recordsToExport.length} Cards...`);
+      const zipBlob = await generateIndividualCardsZip(
+        doc,
+        recordsToExport,
+        'jpg',
+        true
+      );
+      const docName = sanitizeFilenamePart(doc.name) || 'ID_Cards';
+      triggerDownload(zipBlob, `Bulk_All_JPGs_${docName}_(${recordsToExport.length}_Students).zip`);
+    } catch (err) {
+      console.error('Bulk export JPG error:', err);
+      alert('Failed to bulk export cards.');
+    } finally {
+      setIsExportingJpg(false);
+      setExportingLabel('');
+      setShowJpgMenu(false);
+    }
+  };
+
 
   // Open Form Generator Modal with auto-detected fields from template
   const handleOpenFormGenerator = () => {
@@ -483,17 +535,81 @@ export const EditorToolbar: React.FC = () => {
             <span>Create Form</span>
           </button>
 
-          {/* Download JPG Button */}
-          <button
-            onClick={handleExportJpg}
-            disabled={isExportingJpg}
-            title="Download this card side as high-res 300 DPI JPG"
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg shadow-2xs transition-colors disabled:opacity-50 shrink-0"
-          >
-            <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="hidden sm:inline">{isExportingJpg ? 'Exporting...' : 'Download JPG'}</span>
-            <span className="sm:hidden">JPG</span>
-          </button>
+          {/* Download JPG Dropdown Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowJpgMenu(!showJpgMenu)}
+              disabled={isExportingJpg}
+              title="Download card JPG images (Both Sides, Front, Back, or Bulk ZIP)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-colors disabled:opacity-50 shrink-0"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">
+                {isExportingJpg ? exportingLabel || 'Exporting...' : 'Download JPG'}
+              </span>
+              <span className="sm:hidden">JPG</span>
+              <ChevronDown className="w-3 h-3 text-emerald-600" />
+            </button>
+
+            {showJpgMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowJpgMenu(false)}
+                />
+                <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-surface-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 border-b border-surface-100 bg-surface-50 text-[11px] text-surface-500 font-medium">
+                    Current Record: <span className="font-semibold text-surface-800">{getRecordDisplayRoll(availableSampleRecords[sampleRecordIndex])} • {getRecordDisplayName(availableSampleRecords[sampleRecordIndex])}</span>
+                  </div>
+
+                  <button
+                    onClick={handleExportBothSidesZip}
+                    className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-surface-800 hover:text-emerald-900 flex items-center gap-2.5 font-medium transition-colors"
+                  >
+                    <Archive className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-emerald-800">Download Both Sides (ZIP)</p>
+                      <p className="text-[10px] text-surface-500">Front & Back JPG in 300 DPI</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleExportSingleSideJpg('front')}
+                    className="w-full text-left px-3 py-1.5 hover:bg-surface-50 flex items-center gap-2.5 text-surface-700 transition-colors"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-surface-400 shrink-0" />
+                    <span>Front Side Only (JPG)</span>
+                  </button>
+
+                  {doc.layouts.back && (
+                    <button
+                      onClick={() => handleExportSingleSideJpg('back')}
+                      className="w-full text-left px-3 py-1.5 hover:bg-surface-50 flex items-center gap-2.5 text-surface-700 transition-colors"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-surface-400 shrink-0" />
+                      <span>Back Side Only (JPG)</span>
+                    </button>
+                  )}
+
+                  {availableSampleRecords.length > 1 && (
+                    <>
+                      <div className="h-px bg-surface-100 my-1" />
+                      <button
+                        onClick={handleExportBulkAllJpgZip}
+                        className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-indigo-700 flex items-center gap-2.5 font-semibold transition-colors"
+                      >
+                        <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <div>
+                          <p>Bulk Download All ({availableSampleRecords.length} Cards ZIP)</p>
+                          <p className="text-[10px] text-indigo-500 font-normal">All students Front & Back JPG in ZIP</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Export PDF Button */}
           <button

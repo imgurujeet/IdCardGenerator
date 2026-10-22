@@ -186,3 +186,54 @@ export function generateUUID(): string {
   });
 }
 
+/**
+ * Extract clean display name for records and file naming
+ */
+export function getRecordDisplayName(record: Record<string, any> = {}): string {
+  if (!record || typeof record !== 'object') return 'Student';
+  const name =
+    getRecordFieldValue(record, 'student_name') ||
+    getRecordFieldValue(record, 'candidate_name') ||
+    getRecordFieldValue(record, 'full_name') ||
+    getRecordFieldValue(record, 'name') ||
+    record.full_name ||
+    record.name ||
+    'Student';
+
+  return String(name).trim() || 'Student';
+}
+
+/**
+ * Extract clean display roll number or identifier for records and file naming
+ */
+export function getRecordDisplayRoll(record: Record<string, any> = {}, fallbackIndex?: number): string {
+  if (!record || typeof record !== 'object') {
+    return fallbackIndex !== undefined ? `CARD-${(fallbackIndex + 1).toString().padStart(3, '0')}` : 'CARD';
+  }
+  const roll =
+    getRecordFieldValue(record, 'roll_no') ||
+    getRecordFieldValue(record, 'student_roll') ||
+    getRecordFieldValue(record, 'roll') ||
+    getRecordFieldValue(record, 'student_id') ||
+    getRecordFieldValue(record, 'admission_no') ||
+    getRecordFieldValue(record, 'identifier') ||
+    record.identifier ||
+    (fallbackIndex !== undefined ? `CARD-${(fallbackIndex + 1).toString().padStart(3, '0')}` : 'CARD');
+
+  return String(roll).trim() || 'CARD';
+}
+
+/**
+ * Format clean filename safe string (replaces spaces and invalid characters with _)
+ */
+export function sanitizeFilenamePart(text: string): string {
+  if (!text) return '';
+  return text
+    .trim()
+    .replace(/[^\w.-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+
