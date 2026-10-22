@@ -11,6 +11,7 @@ import {
   Loader2,
   ArrowRight,
   Trash2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
 import { recordService } from '../../services/record.service';
@@ -18,6 +19,7 @@ import { templateService } from '../../services/template.service';
 import { RecordEntity, TemplateEntity } from '../../types/database';
 import { CSVColumnMapping } from '../../types/record';
 import { generateSingleCardPdf, generatePrintSheetPdf } from '../generation/renderer/pdfExporter';
+import { generateSingleCardJpg } from '../generation/renderer/canvasRenderer';
 import { generateIndividualCardsZip } from '../generation/renderer/zipExporter';
 import { triggerDownload } from '../../lib/utils';
 import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
@@ -48,7 +50,8 @@ export const RecordsPage: React.FC = () => {
   // Generation Modal
   const [showGenModal, setShowGenModal] = useState(false);
   const [genTemplateId, setGenTemplateId] = useState<string>('');
-  const [genMode, setGenMode] = useState<'print_sheet' | 'bulk_zip'>('print_sheet');
+  const [genMode, setGenMode] = useState<'print_sheet' | 'bulk_zip'>('bulk_zip');
+  const [zipFormat, setZipFormat] = useState<'jpg' | 'png' | 'pdf'>('jpg');
   const [includeBack, setIncludeBack] = useState(true);
   const [genProgress, setGenProgress] = useState<{ current: number; total: number } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -219,15 +222,18 @@ export const RecordsPage: React.FC = () => {
         const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
         triggerDownload(blob, `ID_Print_Sheet_${doc.name.replace(/\s+/g, '_')}_A4.pdf`);
       } else {
-        // Bulk ZIP Archive
+        // Bulk ZIP Archive with selected format (JPG, PNG, PDF)
         const zipBlob = await generateIndividualCardsZip(
           doc,
           targetRecords,
-          'png',
+          zipFormat,
           includeBack,
           (completed, total) => setGenProgress({ current: completed, total })
         );
-        triggerDownload(zipBlob, `ID_Cards_Bundle_${doc.name.replace(/\s+/g, '_')}.zip`);
+        triggerDownload(
+          zipBlob,
+          `ID_Cards_${zipFormat.toUpperCase()}_Bundle_${doc.name.replace(/\s+/g, '_')}.zip`
+        );
       }
 
       setShowGenModal(false);
@@ -240,8 +246,8 @@ export const RecordsPage: React.FC = () => {
     }
   };
 
-  // Single Card Download Helper
-  const handleDownloadSingleCard = async (record: RecordEntity) => {
+  // Single Card Download Helper (PDF)
+  const handleDownloadSingleCardPdf = async (record: RecordEntity) => {
     try {
       const tmplRes = await templateService.getTemplateById(templates[0]?.id || '');
       const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
@@ -250,6 +256,22 @@ export const RecordsPage: React.FC = () => {
       triggerDownload(blob, `${record.identifier}_${record.full_name.replace(/\s+/g, '_')}.pdf`);
     } catch (e) {
       console.error('Download error:', e);
+    }
+  };
+
+  // Single Card Download Helper (JPG 300 DPI)
+  const handleDownloadSingleCardJpg = async (record: RecordEntity, side: 'front' | 'back' = 'front') => {
+    try {
+      const tmplRes = await templateService.getTemplateById(templates[0]?.id || '');
+      const doc = tmplRes?.activeVersion?.design_data || PTEC_TEMPLATE_DOC;
+      const jpgBlob = await generateSingleCardJpg(doc, record.data, side, 0.95);
+      triggerDownload(
+        jpgBlob,
+        `${record.identifier}_${record.full_name.replace(/\s+/g, '_')}_${side}.jpg`
+      );
+    } catch (e) {
+      console.error('Download JPG error:', e);
+      alert('Failed to generate JPG. Please check template images.');
     }
   };
 
@@ -430,11 +452,20 @@ export const RecordsPage: React.FC = () => {
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
-                        onClick={() => handleDownloadSingleCard(rec)}
+                        onClick={() => handleDownloadSingleCardJpg(rec, 'front')}
+                        title="Download Front as 300 DPI JPG"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md shadow-2xs transition-colors"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>JPG</span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadSingleCardPdf(rec)}
+                        title="Download Vector PDF"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-surface-700 hover:text-brand-700 bg-white hover:bg-brand-50 border border-surface-300 rounded-md shadow-xs transition-colors"
                       >
                         <Printer className="w-3.5 h-3.5 text-brand-600" />
-                        <span>Print PDF</span>
+                        <span>PDF</span>
                       </button>
                       <button
                         onClick={() => handleDeleteRecord(rec.id, rec.full_name)}
@@ -768,6 +799,52 @@ export const RecordsPage: React.FC = () => {
                     </p>
                   </button>
                 </div>
+
+                {genMode === 'bulk_zip' && (
+                  <div className="mt-3 p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+                    <label className="font-semibold text-surface-800 block text-[11px]">Choose Image Format</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setZipFormat('jpg')}
+                        className={`p-2 text-center rounded-lg border text-xs font-semibold transition-all ${
+                          zipFormat === 'jpg'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-400 shadow-2xs'
+                            : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-50'
+                        }`}
+                      >
+                        <p className="font-bold">JPG (300 DPI)</p>
+                        <p className="text-[9px] font-normal text-surface-500 mt-0.5">Recommended</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setZipFormat('png')}
+                        className={`p-2 text-center rounded-lg border text-xs font-semibold transition-all ${
+                          zipFormat === 'png'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-400 shadow-2xs'
+                            : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-50'
+                        }`}
+                      >
+                        <p className="font-bold">PNG</p>
+                        <p className="text-[9px] font-normal text-surface-500 mt-0.5">Lossless</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setZipFormat('pdf')}
+                        className={`p-2 text-center rounded-lg border text-xs font-semibold transition-all ${
+                          zipFormat === 'pdf'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-400 shadow-2xs'
+                            : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-50'
+                        }`}
+                      >
+                        <p className="font-bold">PDF</p>
+                        <p className="text-[9px] font-normal text-surface-500 mt-0.5">Documents</p>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2">

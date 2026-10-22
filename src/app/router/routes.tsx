@@ -11,6 +11,7 @@ import { PublicFormPage } from '../../features/forms/PublicFormPage';
 import { AssetsPage } from '../../features/assets/AssetsPage';
 import { CustomRequestsPage } from '../../features/requests/CustomRequestsPage';
 import { SettingsPage } from '../../features/settings/SettingsPage';
+import { InviteAcceptPage } from '../../features/auth/InviteAcceptPage';
 
 export const router = createBrowserRouter([
   {
@@ -62,6 +63,10 @@ export const router = createBrowserRouter([
   {
     path: '/form/:slug',
     element: <PublicFormPage />,
+  },
+  {
+    path: '/invite',
+    element: <InviteAcceptPage />,
   },
   {
     path: '*',

@@ -72,14 +72,56 @@ export function getDefaultSampleValue(key: string): string {
   return cleanKey.replace(/_/g, ' ').toUpperCase();
 }
 
+// Smart field lookup resolving direct keys, nested data, and common aliases
+export function getRecordFieldValue(data: Record<string, any>, key: string): any {
+  if (!data || typeof data !== 'object') return undefined;
+
+  const target = data.data && typeof data.data === 'object' ? { ...data.data, ...data } : data;
+
+  // 1. Direct match
+  if (target[key] !== undefined && target[key] !== null && String(target[key]).trim() !== '') {
+    return target[key];
+  }
+
+  // 2. Case-insensitive search
+  const lowerKey = key.toLowerCase();
+  for (const k of Object.keys(target)) {
+    if (k.toLowerCase() === lowerKey && target[k] !== undefined && target[k] !== null && String(target[k]).trim() !== '') {
+      return target[k];
+    }
+  }
+
+  // 3. Known domain aliases
+  const aliasMap: Record<string, string[]> = {
+    student_name: ['candidate_name', 'full_name', 'name', 'studentname', 'fullname'],
+    full_name: ['student_name', 'candidate_name', 'name', 'fullname'],
+    roll_no: ['student_roll', 'roll', 'rollno', 'student_id', 'admission_no', 'identifier'],
+    student_roll: ['roll_no', 'roll', 'rollno', 'student_id', 'admission_no', 'identifier'],
+    father_name: ['Father_name', 'fathername', 'fathers_name', 'guardian_name'],
+    Father_name: ['father_name', 'fathername', 'fathers_name', 'guardian_name'],
+    mobile: ['Mobile_number', 'mobile_number', 'phone', 'contact', 'mobile_no', 'phone_number'],
+    Mobile_number: ['mobile', 'mobile_number', 'phone', 'contact', 'mobile_no'],
+    photo_url: ['photo', 'image', 'picture', 'avatar', 'portrait'],
+    address: ['full_address', 'complete_address', 'fulladdress', 'village'],
+    full_address: ['address', 'complete_address', 'fulladdress', 'village'],
+    dob: ['date_of_birth', 'birth_date', 'd_o_b'],
+  };
+
+  const aliases = aliasMap[key] || aliasMap[lowerKey] || [];
+  for (const alias of aliases) {
+    if (target[alias] !== undefined && target[alias] !== null && String(target[alias]).trim() !== '') {
+      return target[alias];
+    }
+  }
+
+  return undefined;
+}
+
 // Dynamic field interpolator: replaces {{field_name}} with record[field_name]
 export function interpolateString(template: string, data: Record<string, any>, fallback: string = ''): string {
   if (!template) return '';
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_, key) => {
-    let val = data[key];
-    if (val === undefined && data.data && typeof data.data === 'object') {
-      val = data.data[key];
-    }
+    const val = getRecordFieldValue(data, key);
     if (val !== undefined && val !== null && String(val).trim() !== '') {
       return String(val);
     }
@@ -106,10 +148,7 @@ export function resolveElementText(
   } else if (elem.type === 'dynamic-text' || elem.fieldKey) {
     // 2. If it's a dynamic element or has a fieldKey bound
     if (elem.fieldKey) {
-      let val = record[elem.fieldKey];
-      if (val === undefined && record.data && typeof record.data === 'object') {
-        val = record.data[elem.fieldKey];
-      }
+      const val = getRecordFieldValue(record, elem.fieldKey);
 
       const displayVal =
         val !== undefined && val !== null && String(val).trim() !== ''
@@ -122,7 +161,7 @@ export function resolveElementText(
           const sep = rawText.endsWith(' ') ? '' : ' ';
           rawText = `${rawText}${sep}${displayVal}`;
         } else {
-          rawText = `${rawText}: ${displayVal}`;
+          rawText = displayVal;
         }
       } else {
         rawText = displayVal;

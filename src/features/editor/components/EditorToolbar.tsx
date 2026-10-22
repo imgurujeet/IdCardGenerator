@@ -21,12 +21,16 @@ import {
   Trash2,
   ArrowRight,
   Home,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { templateService } from '../../../services/template.service';
 import { formService } from '../../../services/form.service';
 import { organizationService } from '../../../services/organization.service';
 import { generateSingleCardPdf } from '../../generation/renderer/pdfExporter';
+import { generateSingleCardJpg } from '../../generation/renderer/canvasRenderer';
 import { triggerDownload } from '../../../lib/utils';
 import { FormFieldType } from '../../../types/form';
 
@@ -113,6 +117,30 @@ export const EditorToolbar: React.FC = () => {
       console.error('Export error:', err);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const [isExportingJpg, setIsExportingJpg] = useState(false);
+  const handleExportJpg = async () => {
+    if (!doc) return;
+    try {
+      setIsExportingJpg(true);
+      const activeRecord = availableSampleRecords[sampleRecordIndex] || {};
+      const jpgBlob = await generateSingleCardJpg(doc, activeRecord, activeSide, 0.95);
+      const candidateName =
+        activeRecord.student_name ||
+        activeRecord.employee_name ||
+        activeRecord.full_name ||
+        'ID_Card';
+      triggerDownload(
+        jpgBlob,
+        `${candidateName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${activeSide}.jpg`
+      );
+    } catch (err) {
+      console.error('Export JPG error:', err);
+      alert('Failed to export JPG. Please check template images.');
+    } finally {
+      setIsExportingJpg(false);
     }
   };
 
@@ -409,38 +437,69 @@ export const EditorToolbar: React.FC = () => {
 
         {/* Right: Data Switcher, Create Form, Quick Export & Save */}
         <div className="flex items-center gap-2">
-          {/* Sample Record Preview Selector */}
-          <div className="hidden lg:flex items-center gap-1.5 text-xs bg-surface-50 border border-surface-200 px-2 py-1 rounded-lg">
-            <Users className="w-3.5 h-3.5 text-surface-500" />
-            <span className="text-surface-500 font-medium">Preview:</span>
-            <select
-              value={sampleRecordIndex}
-              onChange={(e) => setSampleRecordIndex(Number(e.target.value))}
-              className="bg-transparent font-medium text-surface-900 outline-none cursor-pointer"
-            >
-              {availableSampleRecords.map((rec, i) => (
-                <option key={i} value={i}>
-                  {rec.student_name || rec.employee_name || rec.full_name || `Record #${i + 1}`}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Sample Record Preview Selector (Responsive with Prev/Next Stepper) */}
+          {availableSampleRecords.length > 0 && (
+            <div className="flex items-center gap-1 text-xs bg-surface-50 border border-surface-200 px-1.5 py-1 rounded-lg">
+              <Users className="w-3.5 h-3.5 text-surface-500 shrink-0 hidden sm:inline" />
+              <button
+                type="button"
+                disabled={sampleRecordIndex <= 0}
+                onClick={() => setSampleRecordIndex(Math.max(0, sampleRecordIndex - 1))}
+                className="p-0.5 rounded hover:bg-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                title="Previous Record"
+              >
+                <ChevronLeft className="w-3.5 h-3.5 text-surface-600" />
+              </button>
+              <select
+                value={sampleRecordIndex}
+                onChange={(e) => setSampleRecordIndex(Number(e.target.value))}
+                className="bg-transparent font-medium text-surface-900 outline-none cursor-pointer text-xs max-w-[110px] sm:max-w-[150px] truncate"
+              >
+                {availableSampleRecords.map((rec, i) => (
+                  <option key={i} value={i}>
+                    {rec.student_name || rec.employee_name || rec.full_name || `Record #${i + 1}`}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={sampleRecordIndex >= availableSampleRecords.length - 1}
+                onClick={() => setSampleRecordIndex(Math.min(availableSampleRecords.length - 1, sampleRecordIndex + 1))}
+                className="p-0.5 rounded hover:bg-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                title="Next Record"
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-surface-600" />
+              </button>
+            </div>
+          )}
 
           {/* Create Form from Template Button */}
           <button
             onClick={handleOpenFormGenerator}
             title="Create a shareable student registration form based on this template"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
             <span>Create Form</span>
+          </button>
+
+          {/* Download JPG Button */}
+          <button
+            onClick={handleExportJpg}
+            disabled={isExportingJpg}
+            title="Download this card side as high-res 300 DPI JPG"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg shadow-2xs transition-colors disabled:opacity-50 shrink-0"
+          >
+            <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">{isExportingJpg ? 'Exporting...' : 'Download JPG'}</span>
+            <span className="sm:hidden">JPG</span>
           </button>
 
           {/* Export PDF Button */}
           <button
             onClick={handleQuickExport}
             disabled={isExporting}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 hover:text-surface-900 bg-white border border-surface-300 hover:border-surface-400 rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 hover:text-surface-900 bg-white border border-surface-300 hover:border-surface-400 rounded-lg shadow-sm transition-colors disabled:opacity-50 shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
             <span>{isExporting ? 'Generating...' : 'Preview PDF'}</span>

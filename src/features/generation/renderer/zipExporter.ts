@@ -6,7 +6,7 @@ import { generateSingleCardPdf } from './pdfExporter';
 export async function generateIndividualCardsZip(
   doc: TemplateDocument,
   records: Record<string, any>[],
-  format: 'png' | 'pdf' = 'png',
+  format: 'jpg' | 'png' | 'pdf' = 'jpg',
   includeBack: boolean = false,
   onProgress?: (completed: number, total: number) => void
 ): Promise<Blob> {
@@ -19,6 +19,8 @@ export async function generateIndividualCardsZip(
     const record = records[i];
     const identifier =
       record['student_id'] ||
+      record['roll_no'] ||
+      record['student_roll'] ||
       record['employee_id'] ||
       record['identifier'] ||
       `CARD-${(i + 1).toString().padStart(4, '0')}`;
@@ -29,22 +31,27 @@ export async function generateIndividualCardsZip(
       const pdfBytes = await generateSingleCardPdf(doc, record, includeBack);
       folder.file(`${identifier}_${safeName}.pdf`, pdfBytes);
     } else {
-      // PNG Format
+      const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+      const ext = format === 'jpg' ? 'jpg' : 'png';
+      const quality = format === 'jpg' ? 0.95 : undefined;
+
+      // Front Side
       const frontCanvas = await renderCardToCanvas(doc, { dpi: 300, recordData: record, side: 'front' });
       const frontBlob = await new Promise<Blob | null>((resolve) =>
-        frontCanvas.toBlob((b) => resolve(b), 'image/png')
+        frontCanvas.toBlob((b) => resolve(b), mimeType, quality)
       );
       if (frontBlob) {
-        folder.file(`${identifier}_${safeName}_front.png`, frontBlob);
+        folder.file(`${identifier}_${safeName}_front.${ext}`, frontBlob);
       }
 
+      // Back Side
       if (includeBack && doc.layouts.back) {
         const backCanvas = await renderCardToCanvas(doc, { dpi: 300, recordData: record, side: 'back' });
         const backBlob = await new Promise<Blob | null>((resolve) =>
-          backCanvas.toBlob((b) => resolve(b), 'image/png')
+          backCanvas.toBlob((b) => resolve(b), mimeType, quality)
         );
         if (backBlob) {
-          folder.file(`${identifier}_${safeName}_back.png`, backBlob);
+          folder.file(`${identifier}_${safeName}_back.${ext}`, backBlob);
         }
       }
     }

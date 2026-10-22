@@ -22,6 +22,36 @@ function saveStoredLocalOrgs(list: Organization[]) {
   }
 }
 
+export interface OrganizationInvite {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: 'owner' | 'admin' | 'designer' | 'data_operator' | 'viewer';
+  token: string;
+  invite_link: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  created_at: string;
+}
+
+const STORAGE_INVITES_PREFIX = 'idforge_pending_invites_';
+
+function getStoredInvites(orgId: string): OrganizationInvite[] {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_INVITES_PREFIX}${orgId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredInvites(orgId: string, list: OrganizationInvite[]) {
+  try {
+    localStorage.setItem(`${STORAGE_INVITES_PREFIX}${orgId}`, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save invites:', e);
+  }
+}
+
 export const organizationService = {
   getActiveOrgId(): string {
     const saved = localStorage.getItem(STORAGE_ACTIVE_ORG_KEY);
@@ -44,7 +74,6 @@ export const organizationService = {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          // Merge Supabase orgs and local orgs seamlessly, deduplicated by ID
           const combined = [...data];
           for (const l of local) {
             if (!combined.some((c) => c.id === l.id || c.name.toLowerCase() === l.name.toLowerCase())) {
@@ -79,7 +108,6 @@ export const organizationService = {
     const slug = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).substring(2, 6)}`;
 
     if (isLiveSupabaseConfigured) {
-      // 1. Try atomic database RPC function first
       try {
         const { data: rpcOrg, error: rpcError } = await supabase.rpc('create_organization', {
           p_name: input.name,
@@ -89,7 +117,6 @@ export const organizationService = {
         if (!rpcError && rpcOrg) {
           const org: Organization = rpcOrg;
           this.setActiveOrgId(org.id);
-          // Also save in local cache for speed
           const current = getStoredLocalOrgs().filter((o) => o.id !== org.id);
           saveStoredLocalOrgs([org, ...current]);
           return org;
@@ -100,12 +127,10 @@ export const organizationService = {
         console.warn('RPC call failed:', rpcEx);
       }
 
-      // 2. Direct insert fallback into Supabase
       try {
         const { data: userRes } = await supabase.auth.getUser();
         const user = userRes?.user;
 
-        // Ensure user profile exists
         if (user) {
           await supabase.from('profiles').upsert({
             id: user.id,
@@ -149,7 +174,6 @@ export const organizationService = {
       }
     }
 
-    // 3. Fallback: Local persistent storage (ensures zero user disruption)
     const fallbackOrg: Organization = {
       id: generateUUID(),
       name: input.name,
@@ -179,5 +203,79 @@ export const organizationService = {
       }
     }
     return [];
+  },
+
+  /**
+   * Generates a persistent workspace invite link with role delegation
+   */
+  async inviteMember(
+    orgId: string,
+    email: string,
+    role: 'owner' | 'admin' | 'designer' | 'data_operator' | 'viewer' = 'admin'
+  ): Promise<OrganizationInvite> {
+    const token = generateUUID();
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const inviteLink = `${baseUrl}/invite?orgId=${orgId}&token=${token}&role=${role}&email=${encodeURIComponent(email)}`;
+
+    const invite: OrganizationInvite = {
+      id: generateUUID(),
+      organization_id: orgId,
+      email: email.trim().toLowerCase(),
+      role,
+      token,
+      invite_link: inviteLink,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+
+    // Save to local cache
+    const current = getStoredInvites(orgId);
+    saveStoredInvites(orgId, [invite, ...current]);
+
+    // Also persist in Supabase if configured
+    if (isLiveSupabaseConfigured) {
+      try {
+        await supabase.from('organization_invites').insert([
+          {
+            organization_id: orgId,
+            email: invite.email,
+            role: invite.role,
+            token: invite.token,
+          },
+        ]);
+      } catch (e) {
+        console.warn('Supabase invite insert exception:', e);
+      }
+    }
+
+    return invite;
+  },
+
+  async getPendingInvites(orgId: string): Promise<OrganizationInvite[]> {
+    return getStoredInvites(orgId).filter((i) => i.status === 'pending');
+  },
+
+  async revokeInvite(orgId: string, inviteId: string): Promise<boolean> {
+    const list = getStoredInvites(orgId);
+    const updated = list.map((i) => (i.id === inviteId ? { ...i, status: 'revoked' as const } : i));
+    saveStoredInvites(orgId, updated);
+    return true;
+  },
+
+  async acceptInvite(
+    orgId: string,
+    token: string,
+    _email?: string,
+    _role?: string
+  ): Promise<{ success: boolean; org?: Organization | null }> {
+    this.setActiveOrgId(orgId);
+    const org = await this.getOrganizationById(orgId);
+
+    // Mark as accepted locally
+    const list = getStoredInvites(orgId);
+    const updated = list.map((i) => (i.token === token ? { ...i, status: 'accepted' as const } : i));
+    saveStoredInvites(orgId, updated);
+
+    return { success: true, org };
   },
 };

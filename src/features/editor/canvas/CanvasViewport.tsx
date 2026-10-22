@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useEditorStore } from '../store/useEditorStore';
-import { mmToPx, pxToMm, resolveElementText } from '../../../lib/utils';
+import { mmToPx, pxToMm, resolveElementText, getRecordFieldValue } from '../../../lib/utils';
 import { TemplateElement } from '../../../types/template';
 import {
   ArrowUpToLine,
@@ -673,8 +673,10 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
     case 'image':
     case 'logo': {
       let src = elem.src;
-      if (elem.fieldKey && record[elem.fieldKey]) {
-        src = record[elem.fieldKey];
+      if (elem.type === 'portrait' || (elem.name && elem.name.toLowerCase().includes('photo'))) {
+        src = getRecordFieldValue(record, elem.fieldKey || 'photo_url') || elem.src;
+      } else if (elem.fieldKey) {
+        src = getRecordFieldValue(record, elem.fieldKey) || elem.src;
       }
 
       const radiusPx = elem.borderRadius ? mmToPx(elem.borderRadius, dpi) : 0;
@@ -690,6 +692,9 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
         );
       }
 
+      const effectiveBorderWidth = elem.borderWidth ?? (elem as any).strokeWidth;
+      const effectiveBorderColor = elem.borderColor ?? (elem as any).strokeColor ?? '#000000';
+
       return (
         <img
           src={src}
@@ -698,7 +703,7 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
           style={{
             objectFit: elem.objectFit || 'cover',
             borderRadius: `${radiusPx}px`,
-            border: elem.borderWidth && elem.borderColor ? `${mmToPx(elem.borderWidth, dpi)}px solid ${elem.borderColor}` : undefined,
+            border: effectiveBorderWidth ? `${mmToPx(effectiveBorderWidth, dpi)}px solid ${effectiveBorderColor}` : undefined,
             boxShadow: elem.shadowColor && elem.shadowBlur ? `0px 2px ${mmToPx(elem.shadowBlur, dpi)}px ${elem.shadowColor}` : undefined,
           }}
         />

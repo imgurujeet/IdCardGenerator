@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   CheckCircle2,
-  Upload,
   Loader2,
   AlertCircle,
   ShieldCheck,
   MapPin,
   Home,
+  Camera,
+  Crop,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
 import { FormEntity } from '../../types/database';
@@ -18,6 +19,7 @@ import {
   getIndianStates,
   getDistrictsForState,
 } from '../../services/indiaLocation.service';
+import { PassportPhotoCaptureModal } from './components/PassportPhotoCaptureModal';
 
 export const PublicFormPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -109,22 +111,32 @@ export const PublicFormPage: React.FC = () => {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Passport Photo Modal State
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [activePhotoFieldKey, setActivePhotoFieldKey] = useState<string>('photo_url');
 
+  const uploadProcessedPhoto = async (file: File, key: string) => {
     try {
       setIsCompressing(true);
       const res = await storageService.uploadPortrait(file, form?.organization_id || 'org-0001');
       setPhotoPreview(res.url);
       setCompressionResult(res);
       handleInputChange(key, res.url);
+      if (key !== 'photo_url') {
+        handleInputChange('photo_url', res.url);
+      }
     } catch (err: any) {
-      console.error('Image compression failed:', err);
+      console.error('Image upload failed:', err);
       alert('Failed to process image. Please try another photo.');
     } finally {
       setIsCompressing(false);
     }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadProcessedPhoto(file, key);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -230,57 +242,105 @@ export const PublicFormPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
             {form.fields_schema.map((field: any) => {
               const isRequired = Boolean(field.validation?.required ?? field.required);
-              const maxFileSizeMb = field.validation?.maxFileSizeMb ?? field.maxFileSizeMb ?? 5;
 
               if (field.type === 'image_upload') {
                 return (
-                  <div key={field.id} className="space-y-2">
-                    <label className="text-xs font-semibold text-surface-800 flex items-center justify-between">
-                      <span>
-                        {field.label} {isRequired && <span className="text-red-500">*</span>}
+                  <div key={field.id} className="p-4 bg-brand-50/40 rounded-xl border border-brand-200 space-y-3">
+                    <label className="text-xs font-bold text-surface-900 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-brand-600" />
+                        <span>{field.label} {isRequired && <span className="text-red-500">*</span>}</span>
                       </span>
-                      {maxFileSizeMb && (
-                        <span className="text-[10px] text-surface-400 font-normal">
-                          Max {maxFileSizeMb}MB
-                        </span>
-                      )}
+                      <span className="text-[10px] text-brand-700 font-semibold bg-brand-100/70 px-2 py-0.5 rounded-full">
+                        Standard 35×45mm Passport
+                      </span>
                     </label>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
                       {isCompressing ? (
-                        <div className="w-24 h-28 rounded-lg bg-brand-50 border-2 border-dashed border-brand-400 flex flex-col items-center justify-center text-brand-600 text-center p-2 shrink-0 animate-pulse">
-                          <Loader2 className="w-6 h-6 animate-spin mb-1" />
-                          <span className="text-[10px] font-bold">Compressing...</span>
+                        <div className="w-28 h-36 rounded-xl bg-brand-50 border-2 border-dashed border-brand-400 flex flex-col items-center justify-center text-brand-600 text-center p-2 shrink-0 animate-pulse">
+                          <Loader2 className="w-6 h-6 animate-spin mb-1.5" />
+                          <span className="text-[11px] font-bold">Optimizing...</span>
                         </div>
                       ) : photoPreview ? (
-                        <div className="relative w-24 h-28 rounded-lg overflow-hidden border-2 border-brand-500 shadow-xs shrink-0">
+                        <div className="relative w-28 h-36 rounded-xl overflow-hidden border-2 border-brand-500 shadow-md shrink-0 bg-white group">
                           <img
                             src={photoPreview}
-                            alt="Uploaded Portrait"
+                            alt="Candidate Portrait"
                             className="w-full h-full object-cover"
                           />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActivePhotoFieldKey(field.key);
+                              setShowPhotoModal(true);
+                            }}
+                            className="absolute inset-0 bg-surface-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[11px] font-semibold"
+                          >
+                            <Crop className="w-5 h-5 mb-1" />
+                            <span>Recrop / Retake</span>
+                          </button>
                         </div>
                       ) : (
-                        <div className="w-24 h-28 rounded-lg bg-surface-100 border border-dashed border-surface-300 flex flex-col items-center justify-center text-surface-400 text-center p-2 shrink-0">
-                          <Upload className="w-5 h-5 mb-1" />
-                          <span className="text-[10px]">Photo Preview</span>
+                        <div
+                          onClick={() => {
+                            setActivePhotoFieldKey(field.key);
+                            setShowPhotoModal(true);
+                          }}
+                          className="w-28 h-36 rounded-xl bg-white border-2 border-dashed border-brand-300 hover:border-brand-500 flex flex-col items-center justify-center text-surface-400 hover:text-brand-600 text-center p-2 shrink-0 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          <Camera className="w-6 h-6 mb-1 text-brand-500" />
+                          <span className="text-[11px] font-bold text-surface-700">Add Photo</span>
+                          <span className="text-[9px] text-surface-400 mt-0.5">Passport Size</span>
                         </div>
                       )}
 
-                      <div className="flex-1 space-y-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={isCompressing}
-                          required={isRequired && !photoPreview}
-                          onChange={(e) => handlePhotoUpload(e, field.key)}
-                          className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 cursor-pointer text-surface-600 disabled:opacity-50"
-                        />
-                        {field.helpText && (
-                          <p className="text-[11px] text-surface-400 leading-normal">
-                            {field.helpText}
-                          </p>
-                        )}
+                      <div className="flex-1 space-y-2.5 w-full">
+                        {/* Two Primary Action Buttons: Camera Guide or Upload & Crop */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActivePhotoFieldKey(field.key);
+                              setShowPhotoModal(true);
+                            }}
+                            className="w-full py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>Camera & Silhouette</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActivePhotoFieldKey(field.key);
+                              setShowPhotoModal(true);
+                            }}
+                            className="w-full py-2 px-3 bg-white hover:bg-surface-50 border border-brand-300 text-brand-900 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                          >
+                            <Crop className="w-3.5 h-3.5 text-brand-600" />
+                            <span>Upload & Crop Face</span>
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-surface-500 leading-normal">
+                          {field.helpText || 'Face centered, looking straight with neutral background. Interactive alignment ensures proper placement on ID card.'}
+                        </p>
+
+                        {/* Hidden native input for fallback */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <label className="text-[10px] text-surface-500 cursor-pointer hover:underline flex items-center gap-1">
+                            <span>Or direct file upload:</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={isCompressing}
+                              required={isRequired && !photoPreview}
+                              onChange={(e) => handlePhotoUpload(e, field.key)}
+                              className="text-[10px] file:mr-2 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-surface-200 file:text-surface-700 hover:file:bg-surface-300 cursor-pointer text-surface-600 disabled:opacity-50"
+                            />
+                          </label>
+                        </div>
 
                         {compressionResult && (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium">
@@ -716,6 +776,13 @@ export const PublicFormPage: React.FC = () => {
           Powered securely by IDForge SaaS • Private & Encrypted Record Processing
         </p>
       </div>
+
+      {/* Interactive Passport Photo Capture & Cropper Modal */}
+      <PassportPhotoCaptureModal
+        isOpen={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onCapture={(file) => uploadProcessedPhoto(file, activePhotoFieldKey)}
+      />
     </div>
   );
 };

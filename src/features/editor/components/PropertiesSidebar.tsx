@@ -645,6 +645,67 @@ export const PropertiesSidebar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Text Stroke / Outline Section */}
+            <div className="p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-surface-800 text-[11px] flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedElem.textStrokeWidth && selectedElem.textStrokeWidth > 0)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        updateElement(selectedElem.id, {
+                          textStrokeWidth: 0.4,
+                          textStrokeColor: '#000000',
+                        });
+                      } else {
+                        updateElement(selectedElem.id, {
+                          textStrokeWidth: 0,
+                          textStrokeColor: undefined,
+                        });
+                      }
+                    }}
+                    className="rounded text-brand-600"
+                  />
+                  <span>Text Stroke / Outline</span>
+                </label>
+                {selectedElem.textStrokeColor && (
+                  <input
+                    type="color"
+                    value={selectedElem.textStrokeColor.startsWith('#') ? selectedElem.textStrokeColor : '#000000'}
+                    onChange={(e) => updateElement(selectedElem.id, { textStrokeColor: e.target.value })}
+                    className="w-4 h-4 rounded cursor-pointer border-0 p-0"
+                  />
+                )}
+              </div>
+
+              {Boolean(selectedElem.textStrokeWidth && selectedElem.textStrokeWidth > 0) && (
+                <div className="space-y-1.5 pt-1 text-[10px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-surface-500">Stroke Width ({selectedElem.textStrokeWidth || 0}mm)</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="3"
+                      value={selectedElem.textStrokeWidth || 0}
+                      onChange={(e) => updateElement(selectedElem.id, { textStrokeWidth: Number(e.target.value) })}
+                      className="w-14 px-1 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono text-center"
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3"
+                    step="0.1"
+                    value={selectedElem.textStrokeWidth || 0}
+                    onChange={(e) => updateElement(selectedElem.id, { textStrokeWidth: Number(e.target.value) })}
+                    className="w-full accent-brand-600 cursor-pointer"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -652,9 +713,10 @@ export const PropertiesSidebar: React.FC = () => {
         {selectedElem.type === 'shape' && (
           <div className="space-y-3 pt-2 border-t border-surface-200">
             <span className="font-semibold text-surface-900 block uppercase tracking-wider text-[11px]">
-              Fill & Outline
+              Fill, Stroke & Radius
             </span>
 
+            {/* Colors */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] text-surface-500 block mb-1">Fill Color</label>
@@ -665,7 +727,7 @@ export const PropertiesSidebar: React.FC = () => {
                     onChange={(e) => updateElement(selectedElem.id, { fillColor: e.target.value })}
                     className="w-4 h-4 rounded cursor-pointer border-0 p-0"
                   />
-                  <span className="font-mono text-xs">{selectedElem.fillColor || '#fff'}</span>
+                  <span className="font-mono text-xs truncate">{selectedElem.fillColor || '#fff'}</span>
                 </div>
               </div>
 
@@ -678,10 +740,78 @@ export const PropertiesSidebar: React.FC = () => {
                     onChange={(e) => updateElement(selectedElem.id, { strokeColor: e.target.value })}
                     className="w-4 h-4 rounded cursor-pointer border-0 p-0"
                   />
-                  <span className="font-mono text-xs">{selectedElem.strokeColor || '#000'}</span>
+                  <span className="font-mono text-xs truncate">{selectedElem.strokeColor || '#000'}</span>
                 </div>
               </div>
             </div>
+
+            {/* Stroke Width Slider & Number Input */}
+            <div className="p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="font-semibold text-surface-700">Border / Stroke Width</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.2"
+                    min="0"
+                    max="10"
+                    value={selectedElem.strokeWidth || 0}
+                    onChange={(e) => updateElement(selectedElem.id, { strokeWidth: Math.max(0, Number(e.target.value)) })}
+                    className="w-14 px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono text-center outline-none focus:border-brand-500"
+                  />
+                  <span className="text-[10px] text-surface-400">mm</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="8"
+                step="0.1"
+                value={selectedElem.strokeWidth || 0}
+                onChange={(e) => updateElement(selectedElem.id, { strokeWidth: Number(e.target.value) })}
+                className="w-full accent-brand-600 cursor-pointer"
+              />
+              <div className="flex justify-between text-[9px] text-surface-400">
+                <span>0mm (No Stroke)</span>
+                <span>4mm</span>
+                <span>8mm</span>
+              </div>
+            </div>
+
+            {/* Corner Radius Slider (Rectangle) */}
+            {selectedElem.shapeType === 'rectangle' && (
+              <div className="p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <label className="font-semibold text-surface-700">Corner Radius</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="25"
+                      value={selectedElem.borderRadius || 0}
+                      onChange={(e) => updateElement(selectedElem.id, { borderRadius: Math.max(0, Number(e.target.value)) })}
+                      className="w-14 px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono text-center outline-none focus:border-brand-500"
+                    />
+                    <span className="text-[10px] text-surface-400">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="0.5"
+                  value={selectedElem.borderRadius || 0}
+                  onChange={(e) => updateElement(selectedElem.id, { borderRadius: Number(e.target.value) })}
+                  className="w-full accent-brand-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-surface-400">
+                  <span>Square (0)</span>
+                  <span>Rounded (10)</span>
+                  <span>Pill (20mm)</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -689,34 +819,106 @@ export const PropertiesSidebar: React.FC = () => {
         {(selectedElem.type === 'portrait' || selectedElem.type === 'image' || selectedElem.type === 'logo') && (
           <div className="space-y-3 pt-2 border-t border-surface-200">
             <span className="font-semibold text-surface-900 block uppercase tracking-wider text-[11px]">
-              Image Frame & Fit
+              Frame, Stroke & Fit
             </span>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-surface-500 block mb-1">Object Fit</label>
-                <select
-                  value={selectedElem.objectFit || 'cover'}
-                  onChange={(e) => updateElement(selectedElem.id, { objectFit: e.target.value as any })}
-                  className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500"
-                >
-                  <option value="cover">Cover (Fill Frame)</option>
-                  <option value="contain">Contain (Full Image)</option>
-                </select>
-              </div>
+            <div>
+              <label className="text-[10px] text-surface-500 block mb-1">Object Fit</label>
+              <select
+                value={selectedElem.objectFit || 'cover'}
+                onChange={(e) => updateElement(selectedElem.id, { objectFit: e.target.value as any })}
+                className="w-full px-2 py-1.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500"
+              >
+                <option value="cover">Cover (Fill Frame / Portrait)</option>
+                <option value="contain">Contain (Full Image Uncropped)</option>
+              </select>
+            </div>
 
-              <div>
-                <label className="text-[10px] text-surface-500 block mb-1">Corner Radius</label>
-                <div className="flex items-center border border-surface-300 rounded px-2 py-1 bg-surface-50">
+            {/* Border / Frame Width Slider */}
+            <div className="p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="font-semibold text-surface-700">Border / Frame Width</label>
+                <div className="flex items-center gap-1">
                   <input
                     type="number"
-                    step="0.5"
-                    value={selectedElem.borderRadius || 0}
-                    onChange={(e) => updateElement(selectedElem.id, { borderRadius: Number(e.target.value) })}
-                    className="w-full bg-transparent outline-none font-mono text-xs"
+                    step="0.2"
+                    min="0"
+                    max="10"
+                    value={selectedElem.borderWidth ?? (selectedElem as any).strokeWidth ?? 0}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
+                      updateElement(selectedElem.id, { borderWidth: val, strokeWidth: val });
+                    }}
+                    className="w-14 px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono text-center outline-none focus:border-brand-500"
                   />
                   <span className="text-[10px] text-surface-400">mm</span>
                 </div>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="8"
+                step="0.1"
+                value={selectedElem.borderWidth ?? (selectedElem as any).strokeWidth ?? 0}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  updateElement(selectedElem.id, { borderWidth: val, strokeWidth: val });
+                }}
+                className="w-full accent-brand-600 cursor-pointer"
+              />
+              <div className="flex justify-between text-[9px] text-surface-400">
+                <span>0mm (No Border)</span>
+                <span>4mm</span>
+                <span>8mm</span>
+              </div>
+
+              {/* Border Color */}
+              <div className="pt-2 flex items-center justify-between border-t border-surface-200 text-[10px]">
+                <span className="text-surface-600 font-medium">Border Color</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="color"
+                    value={selectedElem.borderColor || (selectedElem as any).strokeColor || '#000000'}
+                    onChange={(e) => updateElement(selectedElem.id, { borderColor: e.target.value, strokeColor: e.target.value })}
+                    className="w-4 h-4 rounded cursor-pointer border-0 p-0"
+                  />
+                  <span className="font-mono uppercase text-surface-600">
+                    {selectedElem.borderColor || (selectedElem as any).strokeColor || '#000'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Image Corner Radius Slider */}
+            <div className="p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="font-semibold text-surface-700">Corner Radius</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="50"
+                    value={selectedElem.borderRadius || 0}
+                    onChange={(e) => updateElement(selectedElem.id, { borderRadius: Math.max(0, Number(e.target.value)) })}
+                    className="w-14 px-1.5 py-0.5 border border-surface-300 rounded bg-white text-xs font-mono text-center outline-none focus:border-brand-500"
+                  />
+                  <span className="text-[10px] text-surface-400">mm</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="0.5"
+                value={selectedElem.borderRadius || 0}
+                onChange={(e) => updateElement(selectedElem.id, { borderRadius: Number(e.target.value) })}
+                className="w-full accent-brand-600 cursor-pointer"
+              />
+              <div className="flex justify-between text-[9px] text-surface-400">
+                <span>Sharp (0)</span>
+                <span>Rounded (8)</span>
+                <span>Oval/Circle (30mm)</span>
               </div>
             </div>
           </div>

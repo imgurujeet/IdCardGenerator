@@ -48,14 +48,14 @@ export const EditorPage: React.FC = () => {
           }
         }
 
-        // 2. Load college records for live preview in canvas toolbar
+        // 2. Load college records for live preview in canvas toolbar (real student records first)
         const recRes = await recordService.getRecords(orgId);
         const recordsList: Record<string, any>[] = [];
-        if (formSampleRecord) {
-          recordsList.push(formSampleRecord);
-        }
         if (recRes.records && recRes.records.length > 0) {
           recordsList.push(...recRes.records.map((r) => r.data));
+        }
+        if (formSampleRecord) {
+          recordsList.push(formSampleRecord);
         }
         if (recordsList.length > 0) {
           setAvailableSampleRecords(recordsList);

@@ -1,6 +1,6 @@
 import QRCode from 'qrcode';
 import { CardLayout, TemplateDocument, TemplateElement } from '../../../types/template';
-import { interpolateString, mmToPx, resolveElementText } from '../../../lib/utils';
+import { interpolateString, mmToPx, resolveElementText, getRecordFieldValue } from '../../../lib/utils';
 
 export interface RenderOptions {
   dpi?: number;                 // default 300 for print, 96 for screen
@@ -216,8 +216,10 @@ async function renderElement(
     case 'image':
     case 'logo': {
       let src = elem.src;
-      if (elem.fieldKey && record[elem.fieldKey]) {
-        src = record[elem.fieldKey];
+      if (elem.type === 'portrait' || (elem.name && elem.name.toLowerCase().includes('photo'))) {
+        src = getRecordFieldValue(record, elem.fieldKey || 'photo_url') || elem.src;
+      } else if (elem.fieldKey) {
+        src = getRecordFieldValue(record, elem.fieldKey) || elem.src;
       }
 
       if (!src) {
@@ -369,4 +371,39 @@ function drawImageProp(
   }
 
   ctx.drawImage(img, nx, ny, nw, nh);
+}
+
+/**
+ * Generate a single card side as a JPEG Blob at 300 DPI
+ */
+export async function generateCardSideImageBlob(
+  doc: TemplateDocument,
+  record: Record<string, any>,
+  side: 'front' | 'back' = 'front',
+  format: 'image/jpeg' | 'image/png' = 'image/jpeg',
+  quality: number = 0.95
+): Promise<Blob> {
+  const canvas = await renderCardToCanvas(doc, { dpi: 300, recordData: record, side });
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error('Failed to generate image blob from canvas'));
+      },
+      format,
+      quality
+    );
+  });
+}
+
+/**
+ * Export a single card as a high-resolution JPG Blob (300 DPI)
+ */
+export async function generateSingleCardJpg(
+  doc: TemplateDocument,
+  record: Record<string, any>,
+  side: 'front' | 'back' = 'front',
+  quality: number = 0.95
+): Promise<Blob> {
+  return generateCardSideImageBlob(doc, record, side, 'image/jpeg', quality);
 }
