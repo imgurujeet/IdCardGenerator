@@ -48,6 +48,7 @@ interface EditorState {
   toggleGridSnap: () => void;
   setSampleRecordIndex: (index: number) => void;
   setAvailableSampleRecords: (records: Array<Record<string, any>>) => void;
+  updateCurrentSampleRecord: (updates: Record<string, any>) => void;
   setBackgroundImage: (side: 'front' | 'back', url: string, opacity?: number) => void;
   removeBackgroundImage: (side: 'front' | 'back') => void;
   addCustomFont: (fontName: string, fontUrl: string) => void;
@@ -84,6 +85,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       availableSampleRecords: records.length > 0 ? records : [DEFAULT_PREVIEW_RECORD],
       sampleRecordIndex: 0,
     });
+  },
+  updateCurrentSampleRecord: (updates) => {
+    const { availableSampleRecords, sampleRecordIndex } = get();
+    const updated = [...availableSampleRecords];
+    const current = updated[sampleRecordIndex] || {};
+    updated[sampleRecordIndex] = {
+      ...current,
+      ...updates,
+      // If student_name changed, also keep name/full_name in sync
+      full_name: updates.student_name || updates.full_name || current.student_name || current.full_name,
+      student_name: updates.student_name || updates.full_name || current.student_name || current.full_name,
+      student_roll: updates.roll_no || updates.student_roll || current.roll_no || current.student_roll,
+      roll_no: updates.roll_no || updates.student_roll || current.roll_no || current.student_roll,
+    };
+    set({ availableSampleRecords: updated });
   },
 
   history: [],

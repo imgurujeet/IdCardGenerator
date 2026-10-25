@@ -1,6 +1,6 @@
 import QRCode from 'qrcode';
 import { CardLayout, TemplateDocument, TemplateElement } from '../../../types/template';
-import { interpolateString, mmToPx, resolveElementText, getRecordFieldValue } from '../../../lib/utils';
+import { interpolateString, mmToPx, resolveElementText, getRecordFieldValue, calculateAutoFitFontSizeMm } from '../../../lib/utils';
 
 export interface RenderOptions {
   dpi?: number;                 // default 300 for print, 96 for screen
@@ -53,7 +53,7 @@ export async function renderCardToCanvas(
         ctx.globalAlpha = layout.backgroundOpacity;
       }
       const bgImg = await loadImage(layout.backgroundImageUrl);
-      ctx.drawImage(bgImg, 0, 0, widthPx, heightPx);
+      drawImageProp(ctx, bgImg, 0, 0, widthPx, heightPx, 'cover');
       ctx.restore();
     } catch (e) {
       console.warn('Failed to load background image:', e);
@@ -140,8 +140,22 @@ async function renderElement(
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();
 
+      // Automatically auto-fit font size based on bounding box width & height
+      let effectiveFontSizeMm = elem.fontSize;
+      if (elem.autoFit !== false && (elem.autoFit || elem.type === 'dynamic-text' || elem.fieldKey)) {
+        effectiveFontSizeMm = calculateAutoFitFontSizeMm(
+          rawText,
+          elem.width,
+          elem.height,
+          elem.fontSize,
+          elem.fontFamily || 'Inter',
+          elem.fontWeight || 'bold',
+          elem.minFontSize || 2.0
+        );
+      }
+
       // Convert mm font size to pixels for canvas
-      const fontSizePx = mmToPx(elem.fontSize, dpi);
+      const fontSizePx = mmToPx(effectiveFontSizeMm, dpi);
       const fontStyle = elem.fontStyle === 'italic' ? 'italic' : 'normal';
       const fontWeight =
         elem.fontWeight === 'bold'
@@ -175,11 +189,23 @@ async function renderElement(
         ctx.shadowOffsetY = mmToPx(elem.textShadow.offsetY, dpi);
       }
 
-      // Handle multi-line
+      // Handle multi-line and exact vertical alignment matching editor preview
       const lines = rawText.split('\n');
       const lineHeightPx = fontSizePx * (elem.lineHeight || 1.25);
+      const totalBlockHeightPx = lines.length * lineHeightPx;
+
+      let startY = y;
+      if (elem.verticalAlign === 'top') {
+        startY = y;
+      } else if (elem.verticalAlign === 'bottom') {
+        startY = y + Math.max(0, h - totalBlockHeightPx);
+      } else {
+        // default: middle / center (exactly matching flex justify-center in CanvasViewport)
+        startY = y + Math.max(0, (h - totalBlockHeightPx) / 2);
+      }
+
       lines.forEach((line, idx) => {
-        const lineY = y + idx * lineHeightPx;
+        const lineY = startY + idx * lineHeightPx;
 
         // Draw text stroke if configured
         if (elem.textStrokeColor && elem.textStrokeWidth) {
@@ -200,7 +226,7 @@ async function renderElement(
           } else if (elem.textAlign === 'right') {
             lineStartX = textX - textW;
           }
-          const underlineY = lineY + fontSizePx * 1.1;
+          const underlineY = lineY + fontSizePx * 1.05;
           ctx.beginPath();
           ctx.strokeStyle = elem.color || '#000000';
           ctx.lineWidth = Math.max(1, fontSizePx * 0.08);

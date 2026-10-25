@@ -10,20 +10,24 @@ import {
   X,
   Trash2,
   Palette,
+  Edit3,
+  Sparkles,
 } from 'lucide-react';
 import { organizationService } from '../../services/organization.service';
 import { formService } from '../../services/form.service';
 import { FormEntity } from '../../types/database';
 import { FormFieldDefinition, FormFieldType } from '../../types/form';
 import { generateId } from '../../lib/utils';
+import { subscribeToSync } from '../../lib/sync';
 
 export const FormsPage: React.FC = () => {
   const navigate = useNavigate();
   const [forms, setForms] = useState<FormEntity[]>([]);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
-  // New Form Builder state
+  // Form Builder state
   const [showBuilder, setShowBuilder] = useState(false);
+  const [editingFormId, setEditingFormId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [fields, setFields] = useState<FormFieldDefinition[]>([
@@ -38,10 +42,10 @@ export const FormsPage: React.FC = () => {
     },
     {
       id: generateId('field'),
-      key: 'student_id',
-      label: 'Student / Employee ID',
-      placeholder: 'e.g. STU-2026-001',
-      type: 'text',
+      key: 'roll_no',
+      label: 'College Roll Number',
+      placeholder: 'e.g. 101',
+      type: 'number',
       validation: { required: true },
       order: 2,
     },
@@ -57,7 +61,7 @@ export const FormsPage: React.FC = () => {
   ]);
   const [autoApprove, setAutoApprove] = useState(true);
   const [enforceUnique, setEnforceUnique] = useState(true);
-  const [uniqueFieldKey, setUniqueFieldKey] = useState('phone');
+  const [uniqueFieldKey, setUniqueFieldKey] = useState('roll_no');
   const [isSaving, setIsSaving] = useState(false);
 
   const orgId = organizationService.getActiveOrgId();
@@ -75,11 +79,74 @@ export const FormsPage: React.FC = () => {
     loadForms();
   }, [orgId]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToSync((payload) => {
+      if (
+        payload.type === 'FORMS_UPDATED' ||
+        payload.type === 'ALL' ||
+        payload.type === 'SUBMISSIONS_UPDATED'
+      ) {
+        loadForms();
+      }
+    });
+    return unsubscribe;
+  }, [orgId]);
+
   const copyPublicLink = (slug: string) => {
     const url = `${window.location.origin}/form/${slug}`;
     navigator.clipboard.writeText(url);
     setCopiedSlug(slug);
     setTimeout(() => setCopiedSlug(null), 2000);
+  };
+
+  const handleOpenCreate = () => {
+    setEditingFormId(null);
+    setFormTitle('');
+    setFormDesc('');
+    setFields([
+      {
+        id: generateId('field'),
+        key: 'student_name',
+        label: 'Full Legal Name',
+        placeholder: 'e.g. John Doe',
+        type: 'text',
+        validation: { required: true },
+        order: 1,
+      },
+      {
+        id: generateId('field'),
+        key: 'roll_no',
+        label: 'College Roll Number',
+        placeholder: 'e.g. 101',
+        type: 'number',
+        validation: { required: true },
+        order: 2,
+      },
+      {
+        id: generateId('field'),
+        key: 'photo_url',
+        label: 'Passport Photo',
+        helpText: 'Color portrait with neutral background',
+        type: 'image_upload',
+        validation: { required: true, maxFileSizeMb: 5 },
+        order: 3,
+      },
+    ]);
+    setAutoApprove(true);
+    setEnforceUnique(true);
+    setUniqueFieldKey('roll_no');
+    setShowBuilder(true);
+  };
+
+  const handleEditForm = (form: FormEntity) => {
+    setEditingFormId(form.id);
+    setFormTitle(form.title);
+    setFormDesc(form.description || '');
+    setFields(form.fields_schema && form.fields_schema.length > 0 ? JSON.parse(JSON.stringify(form.fields_schema)) : []);
+    setAutoApprove(form.auto_approve ?? true);
+    setEnforceUnique(form.enforce_unique ?? true);
+    setUniqueFieldKey(form.unique_field_key || 'roll_no');
+    setShowBuilder(true);
   };
 
   const handleAddField = () => {
@@ -89,6 +156,26 @@ export const FormsPage: React.FC = () => {
       label: 'New Field Question',
       type: 'text',
       validation: { required: false },
+      order: fields.length + 1,
+    };
+    setFields([...fields, newField]);
+  };
+
+  const handleQuickAddField = (preset: { key: string; label: string; type: FormFieldType; placeholder?: string; options?: any[] }) => {
+    // Avoid duplicate keys
+    const existingIndex = fields.findIndex((f) => f.key === preset.key);
+    if (existingIndex >= 0) {
+      alert(`The field "${preset.label}" (${preset.key}) already exists in this form.`);
+      return;
+    }
+    const newField: FormFieldDefinition = {
+      id: generateId('field'),
+      key: preset.key,
+      label: preset.label,
+      type: preset.type,
+      placeholder: preset.placeholder,
+      options: preset.options,
+      validation: { required: true },
       order: fields.length + 1,
     };
     setFields([...fields, newField]);
@@ -108,20 +195,34 @@ export const FormsPage: React.FC = () => {
 
     try {
       setIsSaving(true);
-      await formService.createForm(orgId, {
-        title: formTitle,
-        description: formDesc,
-        auto_approve: autoApprove,
-        enforce_unique: enforceUnique,
-        unique_field_key: uniqueFieldKey,
-        fields,
-      });
+      if (editingFormId) {
+        // Update existing form options & dynamic fields
+        await formService.updateForm(editingFormId, {
+          title: formTitle,
+          description: formDesc,
+          auto_approve: autoApprove,
+          enforce_unique: enforceUnique,
+          unique_field_key: uniqueFieldKey,
+          fields_schema: fields,
+        });
+      } else {
+        // Create new form
+        await formService.createForm(orgId, {
+          title: formTitle,
+          description: formDesc,
+          auto_approve: autoApprove,
+          enforce_unique: enforceUnique,
+          unique_field_key: uniqueFieldKey,
+          fields,
+        });
+      }
       setShowBuilder(false);
+      setEditingFormId(null);
       setFormTitle('');
       setFormDesc('');
       loadForms();
     } catch (e) {
-      console.error('Failed to create form:', e);
+      console.error('Failed to save form:', e);
     } finally {
       setIsSaving(false);
     }
@@ -150,7 +251,7 @@ export const FormsPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setShowBuilder(true)}
+          onClick={handleOpenCreate}
           className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-subtle transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -221,6 +322,14 @@ export const FormsPage: React.FC = () => {
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button
+                      onClick={() => handleEditForm(form)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold rounded-lg text-xs transition-colors border border-amber-200 shadow-2xs"
+                      title="Update form questions, fields, and options"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Edit Form</span>
+                    </button>
+                    <button
                       onClick={() => navigate(`/forms/${form.id}/submissions`)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold rounded-lg text-xs transition-colors"
                     >
@@ -263,10 +372,14 @@ export const FormsPage: React.FC = () => {
 
             <div className="flex items-center gap-2 mb-1">
               <FileCheck2 className="w-5 h-5 text-brand-600" />
-              <h2 className="text-lg font-bold text-surface-900">Visual Form Builder</h2>
+              <h2 className="text-lg font-bold text-surface-900">
+                {editingFormId ? 'Edit Data Collection Form' : 'Visual Form Builder'}
+              </h2>
             </div>
             <p className="text-xs text-surface-500 mb-5">
-              Customize input fields, required rules, and image upload settings.
+              {editingFormId
+                ? 'Update fields, options, and rules for this registration form.'
+                : 'Customize input fields, required rules, and image upload settings.'}
             </p>
 
             <form onSubmit={handleCreateForm} className="flex-1 flex flex-col overflow-hidden">
@@ -357,6 +470,103 @@ export const FormsPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Quick Add Information Fields Bar */}
+                <div className="bg-brand-50/70 p-3.5 rounded-xl border border-brand-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-brand-950 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Quick Add Field Presets:</span>
+                    </span>
+                    <span className="text-[10px] text-brand-700 font-medium">Click any tag to add instantly</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'student_name', label: 'Candidate Full Name', type: 'text', placeholder: 'Enter student full name' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Full Name
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'roll_no', label: 'College Roll Number', type: 'number', placeholder: 'e.g. 148' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Roll Number
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'session', label: 'Academic Session', type: 'select', options: ['2024-2026', '2023-2025', '2025-2027', '2026-2028'] })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Session
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'father_name', label: "Father's Name", type: 'text', placeholder: 'e.g. Dilip Paswan' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Father's Name
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'mother_name', label: "Mother's Name", type: 'text', placeholder: 'e.g. Sunita Devi' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Mother's Name
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'dob', label: 'Date of Birth (DD-MM-YYYY)', type: 'text', placeholder: 'e.g. 08-03-2003' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Date of Birth
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'blood_group', label: 'Blood Group', type: 'select', options: ['A+', 'B+', 'O+', 'AB+', 'A-', 'B-', 'O-', 'AB-'] })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Blood Group
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'mobile', label: 'Mobile Number (10 digits)', type: 'phone', placeholder: 'e.g. 9876543210' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Mobile Phone
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'pincode', label: 'PIN Code (Auto-Detect City & State)', type: 'india_pincode', placeholder: 'e.g. 803221' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + PIN Code (City & State)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'address', label: 'Village / Street Address', type: 'text', placeholder: 'e.g. Vill+PO- Railli' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Village / Address
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'police_station', label: 'Police Station (PS)', type: 'text', placeholder: 'e.g. NTPC, Barh' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Police Station
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'photo_url', label: 'Passport Photo Upload', type: 'image_upload' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + Photo Upload
+                    </button>
+                  </div>
+                </div>
+
                 {/* Fields Builder List */}
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -369,7 +579,7 @@ export const FormsPage: React.FC = () => {
                       className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Add Field</span>
+                      <span>Add Custom Field</span>
                     </button>
                   </div>
 

@@ -91,7 +91,7 @@ export function getRecordFieldValue(data: Record<string, any>, key: string): any
     }
   }
 
-  // 3. Known domain aliases
+  // 3. Known domain aliases across front & back of ID cards
   const aliasMap: Record<string, string[]> = {
     student_name: ['candidate_name', 'full_name', 'name', 'studentname', 'fullname'],
     full_name: ['student_name', 'candidate_name', 'name', 'fullname'],
@@ -99,11 +99,18 @@ export function getRecordFieldValue(data: Record<string, any>, key: string): any
     student_roll: ['roll_no', 'roll', 'rollno', 'student_id', 'admission_no', 'identifier'],
     father_name: ['Father_name', 'fathername', 'fathers_name', 'guardian_name'],
     Father_name: ['father_name', 'fathername', 'fathers_name', 'guardian_name'],
+    mother_name: ['Mother_name', 'mothername', 'mothers_name'],
     mobile: ['Mobile_number', 'mobile_number', 'phone', 'contact', 'mobile_no', 'phone_number'],
-    Mobile_number: ['mobile', 'mobile_number', 'phone', 'contact', 'mobile_no'],
+    Mobile_number: ['mobile', 'mobile_number', 'phone', 'contact', 'mobile_no', 'phone_number'],
     photo_url: ['photo', 'image', 'picture', 'avatar', 'portrait'],
     address: ['full_address', 'complete_address', 'fulladdress', 'village'],
     full_address: ['address', 'complete_address', 'fulladdress', 'village'],
+    police_station: ['ps', 'police_stn', 'policestation', 'thana'],
+    district: ['city', 'district_pin', 'dist', 'location'],
+    city: ['district', 'district_pin', 'dist'],
+    pincode: ['pin', 'postal_code', 'pin_code'],
+    blood_group: ['blood', 'bloodgroup'],
+    session: ['academic_session', 'batch', 'year'],
     dob: ['date_of_birth', 'birth_date', 'd_o_b'],
   };
 
@@ -120,10 +127,15 @@ export function getRecordFieldValue(data: Record<string, any>, key: string): any
 // Dynamic field interpolator: replaces {{field_name}} with record[field_name]
 export function interpolateString(template: string, data: Record<string, any>, fallback: string = ''): string {
   if (!template) return '';
+  const hasRealData = data && Object.keys(data).length > 0;
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_, key) => {
     const val = getRecordFieldValue(data, key);
     if (val !== undefined && val !== null && String(val).trim() !== '') {
       return String(val);
+    }
+    // When a real record is active, do not inject arbitrary fake defaults; return fallback or empty
+    if (hasRealData) {
+      return fallback;
     }
     return fallback || getDefaultSampleValue(key);
   });
@@ -234,6 +246,79 @@ export function sanitizeFilenamePart(text: string): string {
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 60);
+}
+
+/**
+ * Accurately calculate the optimal auto-fitted font size (in mm)
+ * so text stays strictly within the bounding box (width & height).
+ */
+export function calculateAutoFitFontSizeMm(
+  text: string,
+  boxWidthMm: number,
+  boxHeightMm: number,
+  baseFontSizeMm: number,
+  fontFamily: string = 'Inter',
+  fontWeight: string = 'bold',
+  minFontSizeMm: number = 2.0
+): number {
+  if (!text || boxWidthMm <= 0 || boxHeightMm <= 0 || baseFontSizeMm <= 0) {
+    return baseFontSizeMm;
+  }
+
+  // Exact measurement via HTML5 offscreen canvas if DOM environment is present
+  if (typeof document !== 'undefined') {
+    try {
+      const testScale = 100; // 100px test size for high sub-pixel precision
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const fw = fontWeight === 'bold' ? '700' : fontWeight === 'semibold' ? '600' : fontWeight === 'medium' ? '500' : '400';
+        ctx.font = `${fw} ${testScale}px "${fontFamily}", sans-serif`;
+        const lines = text.split('\n');
+
+        let maxLineWidthPx = 0;
+        for (const line of lines) {
+          const w = ctx.measureText(line).width;
+          if (w > maxLineWidthPx) maxLineWidthPx = w;
+        }
+
+        // Available box in px at test scale
+        const textWidthAtBaseMm = (maxLineWidthPx * baseFontSizeMm) / testScale;
+        let scale = 1.0;
+        if (textWidthAtBaseMm > boxWidthMm) {
+          scale = boxWidthMm / textWidthAtBaseMm;
+        }
+
+        // Check height constraint
+        const totalHeightAtBaseMm = lines.length * (baseFontSizeMm * 1.25);
+        if (totalHeightAtBaseMm > boxHeightMm) {
+          const hScale = boxHeightMm / totalHeightAtBaseMm;
+          scale = Math.min(scale, hScale);
+        }
+
+        // Apply a safe 0.96 factor so text never overflows or clips borders
+        const fittedMm = baseFontSizeMm * scale * 0.96;
+        return Math.max(minFontSizeMm, Math.min(baseFontSizeMm, Number(fittedMm.toFixed(2))));
+      }
+    } catch {
+      // Fallback to mathematical approximation below
+    }
+  }
+
+  // Pure mathematical fallback (average sans-serif character width is ~0.62x font size)
+  const lines = text.split('\n');
+  const maxLineLen = Math.max(...lines.map((l) => l.length), 1);
+  const approxWidthMm = maxLineLen * (baseFontSizeMm * 0.62);
+  let scale = 1.0;
+  if (approxWidthMm > boxWidthMm) {
+    scale = boxWidthMm / approxWidthMm;
+  }
+  const totalHeightMm = lines.length * (baseFontSizeMm * 1.25);
+  if (totalHeightMm > boxHeightMm) {
+    scale = Math.min(scale, boxHeightMm / totalHeightMm);
+  }
+  const fittedMm = baseFontSizeMm * scale * 0.96;
+  return Math.max(minFontSizeMm, Math.min(baseFontSizeMm, Number(fittedMm.toFixed(2))));
 }
 
 

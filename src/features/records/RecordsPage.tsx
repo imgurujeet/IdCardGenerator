@@ -24,6 +24,7 @@ import { generateSingleCardJpg } from '../generation/renderer/canvasRenderer';
 import { generateSingleCardZip, generateIndividualCardsZip } from '../generation/renderer/zipExporter';
 import { triggerDownload, getRecordDisplayName, getRecordDisplayRoll, sanitizeFilenamePart } from '../../lib/utils';
 import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
+import { subscribeToSync } from '../../lib/sync';
 
 export const RecordsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -77,6 +78,20 @@ export const RecordsPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+  }, [searchQuery, statusFilter, orgId]);
+
+  // Real-time synchronization across tabs and windows
+  useEffect(() => {
+    const unsubscribe = subscribeToSync((payload) => {
+      if (
+        payload.type === 'RECORDS_UPDATED' ||
+        payload.type === 'ALL' ||
+        payload.type === 'SUBMISSIONS_UPDATED'
+      ) {
+        loadData();
+      }
+    });
+    return unsubscribe;
   }, [searchQuery, statusFilter, orgId]);
 
   // Bulk Selection
@@ -493,17 +508,29 @@ export const RecordsPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-100">
-            {records.map((rec) => {
-              const isSelected = selectedIds.includes(rec.id);
-              const photo = rec.data['photo_url'] || rec.data['photo'] || rec.data['image'];
+            {records.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-12 text-center text-surface-400">
+                  <div className="max-w-sm mx-auto space-y-2">
+                    <p className="font-medium text-surface-600 text-sm">No records found</p>
+                    <p className="text-xs text-surface-400">
+                      Use <strong>Add Single Record</strong>, <strong>Import CSV</strong>, or share the public registration link to collect student and staff data.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              records.map((rec) => {
+                const isSelected = selectedIds.includes(rec.id);
+                const photo = rec.data['photo_url'] || rec.data['photo'] || rec.data['image'];
 
-              return (
-                <tr
-                  key={rec.id}
-                  className={`transition-colors ${
-                    isSelected ? 'bg-brand-50/50' : 'hover:bg-surface-50/70'
-                  }`}
-                >
+                return (
+                  <tr
+                    key={rec.id}
+                    className={`transition-colors ${
+                      isSelected ? 'bg-brand-50/50' : 'hover:bg-surface-50/70'
+                    }`}
+                  >
                   <td className="px-5 py-3.5">
                     <input
                       type="checkbox"
@@ -611,7 +638,7 @@ export const RecordsPage: React.FC = () => {
                   </td>
                 </tr>
               );
-            })}
+            }))}
           </tbody>
         </table>
 

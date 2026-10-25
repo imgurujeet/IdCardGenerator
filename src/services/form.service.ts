@@ -2,6 +2,7 @@ import { FormEntity, FormSubmissionEntity } from '../types/database';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/utils';
 import { recordService } from './record.service';
+import { broadcastSync } from '../lib/sync';
 
 const STORAGE_FORMS_KEY = 'idforge_user_created_forms';
 const STORAGE_SUBS_KEY = 'idforge_user_submissions';
@@ -45,7 +46,24 @@ const DEFAULT_PTEC_FORM: FormEntity = {
         { label: '2024-2026', value: '2024-2026' },
         { label: '2023-2025', value: '2023-2025' },
         { label: '2025-2027', value: '2025-2027' },
+        { label: '2026-2028', value: '2026-2028' },
       ],
+    },
+    {
+      id: 'f-father',
+      key: 'father_name',
+      label: "Father's Name",
+      type: 'text',
+      required: true,
+      placeholder: "e.g. Dilip Paswan",
+    },
+    {
+      id: 'f-dob',
+      key: 'dob',
+      label: 'Date of Birth (DD-MM-YYYY)',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. 08-03-2003',
     },
     {
       id: 'f-blood',
@@ -65,11 +83,36 @@ const DEFAULT_PTEC_FORM: FormEntity = {
       ],
     },
     {
-      id: 'f-address',
-      key: 'pincode',
-      label: 'Postal Address (State, District & PIN Code)',
-      type: 'india_address',
+      id: 'f-mobile',
+      key: 'mobile',
+      label: 'Mobile Number (10 digits)',
+      type: 'phone',
       required: true,
+      placeholder: 'e.g. 9876543210',
+    },
+    {
+      id: 'f-pincode',
+      key: 'pincode',
+      label: 'PIN Code (Auto-Detect City & State)',
+      type: 'india_pincode',
+      required: true,
+      placeholder: 'e.g. 803221',
+    },
+    {
+      id: 'f-address',
+      key: 'address',
+      label: 'Village / Street Address',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. Vill+PO- Railli',
+    },
+    {
+      id: 'f-police',
+      key: 'police_station',
+      label: 'Police Station (PS)',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. NTPC, Barh',
     },
     {
       id: 'f-photo',
@@ -91,7 +134,10 @@ function getStoredLocalForms(): FormEntity[] {
     if (!parsed.some((f) => f.public_slug === 'ptec1-6nk1' || f.id === DEFAULT_PTEC_FORM.id)) {
       parsed.push(DEFAULT_PTEC_FORM);
     }
-    return parsed;
+    return parsed.map((f) => ({
+      ...f,
+      auto_approve: f.auto_approve ?? true,
+    }));
   } catch {
     return [DEFAULT_PTEC_FORM];
   }
@@ -230,7 +276,7 @@ export const formService = {
       public_slug: slug,
       is_published: true,
       accepting_submissions: true,
-      auto_approve: input.auto_approve ?? false,
+      auto_approve: input.auto_approve ?? true,
       enforce_unique: input.enforce_unique ?? false,
       unique_field_key: input.unique_field_key || 'mobile',
       fields_schema: input.fields,
@@ -249,6 +295,7 @@ export const formService = {
         if (!error && data) {
           const updated = [data, ...local.filter((f) => f.id !== data.id)];
           saveStoredLocalForms(updated);
+          broadcastSync('FORMS_UPDATED', data.id);
           return data;
         } else if (error) {
           console.warn('Supabase extended form insert warning, attempting base schema:', error.message);
@@ -259,6 +306,7 @@ export const formService = {
             const merged = { ...newForm, ...bData };
             const updated = [merged, ...local.filter((f) => f.id !== merged.id)];
             saveStoredLocalForms(updated);
+            broadcastSync('FORMS_UPDATED', merged.id);
             return merged;
           }
         }
@@ -267,6 +315,7 @@ export const formService = {
       }
     }
 
+    broadcastSync('FORMS_UPDATED', newForm.id);
     return newForm;
   },
 
@@ -292,12 +341,14 @@ export const formService = {
           .select()
           .single();
         if (!error && data) {
+          broadcastSync('FORMS_UPDATED', formId);
           return data;
         }
       } catch (e) {
         console.warn('updateForm Supabase error:', e);
       }
     }
+    broadcastSync('FORMS_UPDATED', formId);
     return updated;
   },
 
@@ -311,6 +362,7 @@ export const formService = {
       form.is_published = isPublished;
       form.updated_at = new Date().toISOString();
       saveStoredLocalForms(local);
+      broadcastSync('FORMS_UPDATED', formId);
       return true;
     }
     return false;
@@ -347,10 +399,13 @@ export const formService = {
     let initialStatus: FormSubmissionEntity['status'] = 'submitted';
 
     // Auto-approve feature
-    if (form.auto_approve) {
+    const shouldAutoApprove = form.auto_approve !== false;
+    if (shouldAutoApprove) {
       initialStatus = 'approved';
       const identifier =
         data['roll_no'] ||
+        data['student_roll'] ||
+        data['roll'] ||
         data['student_id'] ||
         data['employee_id'] ||
         data['mobile'] ||
@@ -360,16 +415,18 @@ export const formService = {
 
       const fullName =
         data['student_name'] ||
+        data['candidate_name'] ||
         data['employee_name'] ||
         data['full_name'] ||
         data['name'] ||
         'Approved Student';
 
       const record = await recordService.createRecord(form.organization_id, {
-        identifier,
-        fullName,
+        identifier: String(identifier),
+        fullName: String(fullName),
         data,
         status: 'approved',
+        source: 'form_submission',
       });
       recordId = record.id;
     }
@@ -382,7 +439,7 @@ export const formService = {
       data,
       status: initialStatus,
       record_id: recordId,
-      reviewed_by: form.auto_approve ? 'system_auto_approval' : null,
+      reviewed_by: shouldAutoApprove ? 'system_auto_approval' : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -415,6 +472,7 @@ export const formService = {
       }
     }
 
+    broadcastSync('ALL', subId);
     return { success: true, submissionId: subId };
   },
 
@@ -513,6 +571,7 @@ export const formService = {
             photo_url: data['photo_url'] || data['photo'] || '',
           },
           status: 'approved',
+          source: 'form_submission',
         });
         sub.record_id = record.id;
       } catch (recErr) {
@@ -543,7 +602,18 @@ export const formService = {
       }
     }
 
+    broadcastSync('ALL', submissionId);
     return true;
+  },
+
+  async bulkApproveSubmissions(submissionIds: string[]): Promise<number> {
+    let count = 0;
+    for (const id of submissionIds) {
+      const ok = await this.updateSubmissionStatus(id, 'approved', true);
+      if (ok) count++;
+    }
+    broadcastSync('ALL');
+    return count;
   },
 
   async deleteForm(formId: string): Promise<boolean> {
@@ -556,6 +626,7 @@ export const formService = {
     }
     const filtered = getStoredLocalForms().filter((f) => f.id !== formId);
     saveStoredLocalForms(filtered);
+    broadcastSync('FORMS_UPDATED', formId);
     return true;
   },
 };

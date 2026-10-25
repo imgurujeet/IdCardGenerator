@@ -52,7 +52,26 @@ export const EditorPage: React.FC = () => {
         const recRes = await recordService.getRecords(orgId);
         const recordsList: Record<string, any>[] = [];
         if (recRes.records && recRes.records.length > 0) {
-          recordsList.push(...recRes.records.map((r) => r.data));
+          recordsList.push(
+            ...recRes.records.map((r) => ({
+              ...r.data,
+              id: r.id,
+              identifier: r.identifier,
+              full_name: r.full_name,
+              student_name: r.data?.student_name || r.full_name,
+              roll_no: r.data?.roll_no || r.identifier,
+              student_roll: r.data?.student_roll || r.data?.roll_no || r.identifier,
+              father_name: r.data?.father_name || r.data?.Father_name || '',
+              dob: r.data?.dob || '',
+              blood_group: r.data?.blood_group || '',
+              session: r.data?.session || '',
+              address: r.data?.address || r.data?.full_address || '',
+              police_station: r.data?.police_station || '',
+              district: r.data?.district || r.data?.city || '',
+              mobile: r.data?.mobile || r.data?.Mobile_number || '',
+              photo_url: r.data?.photo_url || r.data?.photo || '',
+            }))
+          );
         }
         if (formSampleRecord) {
           recordsList.push(formSampleRecord);

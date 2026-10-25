@@ -39,6 +39,7 @@ export const TextElementSchema = BaseElementSchema.extend({
   fontWeight: z.enum(['normal', 'medium', 'semibold', 'bold']).default('normal'),
   fontStyle: z.enum(['normal', 'italic']).default('normal'),
   textAlign: z.enum(['left', 'center', 'right', 'justify']).default('left'),
+  verticalAlign: z.enum(['top', 'middle', 'bottom']).optional(),
   color: z.string().default('#000000'),
   letterSpacing: z.number().optional(),
   lineHeight: z.number().optional(),
@@ -48,6 +49,8 @@ export const TextElementSchema = BaseElementSchema.extend({
   textStrokeColor: z.string().optional(),
   textStrokeWidth: z.number().nonnegative().optional(),
   autoFit: z.boolean().optional(),
+  minFontSize: z.number().positive().optional(),
+  maxFontSize: z.number().positive().optional(),
 });
 
 export const ImageElementSchema = BaseElementSchema.extend({

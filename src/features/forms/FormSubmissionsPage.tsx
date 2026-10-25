@@ -6,10 +6,13 @@ import {
   XCircle,
   ExternalLink,
   Loader2,
+  Sparkles,
+  Radio,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
 import { FormEntity, FormSubmissionEntity } from '../../types/database';
 import { formatDate } from '../../lib/utils';
+import { subscribeToSync } from '../../lib/sync';
 
 export const FormSubmissionsPage: React.FC = () => {
   const { formId } = useParams<{ formId: string }>();
@@ -18,6 +21,7 @@ export const FormSubmissionsPage: React.FC = () => {
   const [submissions, setSubmissions] = useState<FormSubmissionEntity[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved' | 'rejected'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
 
   const loadData = async () => {
     if (!formId) return;
@@ -37,6 +41,46 @@ export const FormSubmissionsPage: React.FC = () => {
     loadData();
   }, [formId]);
 
+  // Real-time synchronization across browser tabs and windows
+  useEffect(() => {
+    const unsubscribe = subscribeToSync((payload) => {
+      if (
+        payload.type === 'SUBMISSIONS_UPDATED' ||
+        payload.type === 'ALL' ||
+        payload.type === 'FORMS_UPDATED'
+      ) {
+        loadData();
+      }
+    });
+    return unsubscribe;
+  }, [formId]);
+
+  const handleToggleAutoApprove = async () => {
+    if (!form) return;
+    const nextVal = form.auto_approve === false ? true : false;
+    setForm({ ...form, auto_approve: nextVal });
+    try {
+      await formService.updateForm(form.id, { auto_approve: nextVal });
+    } catch (e) {
+      console.error('Failed to toggle auto_approve:', e);
+    }
+  };
+
+  const handleApproveAllPending = async () => {
+    const pending = submissions.filter((s) => s.status === 'submitted');
+    if (pending.length === 0) return;
+    setIsApprovingAll(true);
+    try {
+      await formService.bulkApproveSubmissions(pending.map((s) => s.id));
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to bulk approve:', err);
+      alert(err.message || 'Error bulk approving submissions');
+    } finally {
+      setIsApprovingAll(false);
+    }
+  };
+
   const handleUpdateStatus = async (subId: string, status: 'approved' | 'rejected') => {
     setUpdatingId(subId);
     try {
@@ -53,6 +97,8 @@ export const FormSubmissionsPage: React.FC = () => {
       setUpdatingId(null);
     }
   };
+
+  const pendingCount = submissions.filter((s) => s.status === 'submitted').length;
 
   const filteredSubs = submissions.filter((s) => {
     if (statusFilter === 'all') return true;
@@ -71,24 +117,78 @@ export const FormSubmissionsPage: React.FC = () => {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-surface-900">
-              {form?.title || 'Form Submissions'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-surface-900">
+                {form?.title || 'Form Submissions'}
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Radio className="w-2.5 h-2.5 text-emerald-600 animate-pulse" />
+                Live Sync
+              </span>
+            </div>
             <p className="text-xs text-surface-500 mt-0.5">
               Review and approve public student/employee submissions into verified organization records.
             </p>
           </div>
         </div>
 
-        {form && (
-          <button
-            onClick={() => window.open(`/form/${form.public_slug}`, '_blank')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg border border-brand-200 transition-colors"
-          >
-            <span>Open Public Form</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Auto-Approve Toggle */}
+          {form && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-surface-200 bg-surface-50 text-xs shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-surface-700 font-medium">Auto-Approve:</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.auto_approve !== false}
+                onClick={handleToggleAutoApprove}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  form.auto_approve !== false ? 'bg-emerald-600' : 'bg-surface-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    form.auto_approve !== false ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <span
+                className={`font-semibold ${
+                  form.auto_approve !== false ? 'text-emerald-700' : 'text-surface-500'
+                }`}
+              >
+                {form.auto_approve !== false ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          )}
+
+          {/* Bulk Approve Pending Button */}
+          {pendingCount > 0 && (
+            <button
+              disabled={isApprovingAll}
+              onClick={handleApproveAllPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
+            >
+              {isApprovingAll ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              )}
+              <span>Approve All Pending ({pendingCount})</span>
+            </button>
+          )}
+
+          {form && (
+            <button
+              onClick={() => window.open(`/form/${form.public_slug}`, '_blank')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg border border-brand-200 transition-colors"
+            >
+              <span>Open Public Form</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter Tabs */}

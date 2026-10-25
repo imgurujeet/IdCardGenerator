@@ -11,8 +11,10 @@ import {
   Crop,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
+import { templateService } from '../../services/template.service';
+import { PTEC_TEMPLATE_DOC } from '../../services/mockData';
+import { TemplateDocument } from '../../types/template';
 import { FormEntity } from '../../types/database';
-import { FormFieldDefinition } from '../../types/form';
 import { storageService, UploadImageResult } from '../../services/storage.service';
 import {
   lookupIndiaPincode,
@@ -20,10 +22,12 @@ import {
   getDistrictsForState,
 } from '../../services/indiaLocation.service';
 import { PassportPhotoCaptureModal } from './components/PassportPhotoCaptureModal';
+import { SubmittedCardPreview } from './components/SubmittedCardPreview';
 
 export const PublicFormPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [form, setForm] = useState<FormEntity | null>(null);
+  const [templateDoc, setTemplateDoc] = useState<TemplateDocument>(PTEC_TEMPLATE_DOC);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -39,7 +43,6 @@ export const PublicFormPage: React.FC = () => {
   const [addressMode, setAddressMode] = useState<'pincode' | 'manual'>('pincode');
   const [pincodeLoading, setPincodeLoading] = useState(false);
   const [pincodeVerified, setPincodeVerified] = useState<string | null>(null);
-  const [postOfficesList, setPostOfficesList] = useState<string[]>([]);
 
   useEffect(() => {
     async function loadForm() {
@@ -51,12 +54,19 @@ export const PublicFormPage: React.FC = () => {
           setError('This form is either private, unpublished, or does not exist.');
         } else {
           setForm(data);
-          // Set default values
-          const initial: Record<string, any> = {};
-          data.fields_schema.forEach((f: FormFieldDefinition) => {
-            if (f.defaultValue) initial[f.key] = f.defaultValue;
-          });
-          setFormData(initial);
+          // Start with empty form data - no default mock values
+          setFormData({});
+
+          if (data.template_id) {
+            try {
+              const tmpl = await templateService.getTemplateById(data.template_id);
+              if (tmpl?.activeVersion?.design_data) {
+                setTemplateDoc(tmpl.activeVersion.design_data);
+              }
+            } catch (err) {
+              console.warn('Failed to load custom form template, using default:', err);
+            }
+          }
         }
       } catch (e: any) {
         setError(e.message || 'Failed to load form.');
@@ -90,24 +100,21 @@ export const PublicFormPage: React.FC = () => {
       setPincodeLoading(false);
       if (res.success && res.state && res.district) {
         setPincodeVerified(`${res.district}, ${res.state}`);
-        setPostOfficesList(res.postOffices);
         setSelectedState(res.state);
+        // User request: ONLY fetch city and state from PIN code. Rest user writes their own address and police station.
         setFormData((prev) => ({
           ...prev,
           [key]: cleanPin,
           pincode: cleanPin,
           district: res.district,
+          city: res.district,
           state: res.state,
-          police_station: res.postOffices[0] || prev.police_station,
-          city: res.postOffices[0] || prev.city,
         }));
       } else {
         setPincodeVerified(null);
-        setPostOfficesList([]);
       }
     } else {
       setPincodeVerified(null);
-      setPostOfficesList([]);
     }
   };
 
@@ -183,28 +190,20 @@ export const PublicFormPage: React.FC = () => {
     );
   }
 
-  if (submittedId) {
+  if (submittedId && form) {
     return (
-      <div className="min-h-screen bg-surface-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-surface-200 shadow-card text-center">
-          <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-surface-900 mb-1">Registration Submitted!</h2>
-          <p className="text-xs text-surface-500 mb-6 leading-relaxed">
-            Your details and ID photo have been successfully received and submitted for review.
-          </p>
-
-          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-left space-y-1 mb-6">
-            <span className="text-[10px] uppercase font-semibold text-surface-500">Submission Reference</span>
-            <p className="font-mono text-xs font-bold text-surface-900">{submittedId}</p>
-          </div>
-
-          <p className="text-[11px] text-surface-400">
-            You may safely close this browser tab. Your ID badge will be prepared by the administration.
-          </p>
-        </div>
-      </div>
+      <SubmittedCardPreview
+        submissionId={submittedId}
+        formTitle={form.title}
+        templateDoc={templateDoc}
+        formData={{ ...formData, photo_url: photoPreview || formData['photo_url'] }}
+        onReset={() => {
+          setSubmittedId(null);
+          setFormData({});
+          setPhotoPreview(null);
+          setPincodeVerified(null);
+        }}
+      />
     );
   }
 
@@ -576,36 +575,19 @@ export const PublicFormPage: React.FC = () => {
                         </div>
 
                         {pincodeVerified && (
-                          <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-900">
-                            <div className="flex items-center gap-1.5 font-medium">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>Detected: <strong>{pincodeVerified}</strong></span>
+                          <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 space-y-1 text-xs text-emerald-900">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5 font-medium">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Auto-Fetched: <strong>{pincodeVerified}</strong></span>
+                              </div>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">
+                                City & State Verified
+                              </span>
                             </div>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">
-                              Verified
-                            </span>
-                          </div>
-                        )}
-
-                        {postOfficesList.length > 0 && (
-                          <div>
-                            <label className="text-[11px] text-surface-700 block mb-1 font-semibold">
-                              Select City / Post Office Branch:
-                            </label>
-                            <select
-                              value={formData['police_station'] || formData['city'] || ''}
-                              onChange={(e) => {
-                                handleInputChange('police_station', e.target.value);
-                                handleInputChange('city', e.target.value);
-                              }}
-                              className="w-full px-2.5 py-1.5 border border-brand-300 rounded-lg text-xs bg-white text-surface-800 outline-none focus:border-brand-500 font-medium"
-                            >
-                              {postOfficesList.map((po) => (
-                                <option key={po} value={po}>
-                                  {po} Post Office
-                                </option>
-                              ))}
-                            </select>
+                            <p className="text-[10px] text-emerald-700">
+                              City & State filled automatically. Please enter your village/street address and police station in their respective fields below.
+                            </p>
                           </div>
                         )}
                       </div>

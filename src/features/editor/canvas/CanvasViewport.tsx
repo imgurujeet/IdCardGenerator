@@ -1,12 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useEditorStore } from '../store/useEditorStore';
-import { mmToPx, pxToMm, resolveElementText, getRecordFieldValue } from '../../../lib/utils';
+import { mmToPx, pxToMm, resolveElementText, getRecordFieldValue, calculateAutoFitFontSizeMm } from '../../../lib/utils';
 import { TemplateElement } from '../../../types/template';
 import {
   ArrowUpToLine,
   ArrowDownToLine,
   ArrowUp,
   ArrowDown,
+  ArrowLeft as ArrowLeftIcon,
+  ArrowRight as ArrowRightIcon,
   Copy,
   Trash2,
   Lock,
@@ -19,6 +21,7 @@ import {
   ZoomOut,
   RotateCcw,
   AlignCenter,
+  Maximize2,
 } from 'lucide-react';
 
 export const CanvasViewport: React.FC = () => {
@@ -85,6 +88,62 @@ export const CanvasViewport: React.FC = () => {
 
   const selectedElem = currentLayout.elements.find((e) => e.id === selectedElementId);
 
+  // Keyboard navigation & fine-tuned precision nudging
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      if (!selectedElem || selectedElem.locked) {
+        if (e.key === 'Escape') setSelectedElementId(null);
+        return;
+      }
+
+      // Step sizes: Shift = 1.0mm, normal = 0.2mm (or gridSizeMm if snapped)
+      const step = e.shiftKey ? 1.0 : (gridSnap ? gridSizeMm : 0.2);
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (e.altKey || e.ctrlKey) {
+          updateElement(selectedElem.id, { width: Math.max(3, Number((selectedElem.width - step).toFixed(2))) });
+        } else {
+          updateElement(selectedElem.id, { x: Number((selectedElem.x - step).toFixed(2)) });
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (e.altKey || e.ctrlKey) {
+          updateElement(selectedElem.id, { width: Number((selectedElem.width + step).toFixed(2)) });
+        } else {
+          updateElement(selectedElem.id, { x: Number((selectedElem.x + step).toFixed(2)) });
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (e.altKey || e.ctrlKey) {
+          updateElement(selectedElem.id, { height: Math.max(3, Number((selectedElem.height - step).toFixed(2))) });
+        } else {
+          updateElement(selectedElem.id, { y: Number((selectedElem.y - step).toFixed(2)) });
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (e.altKey || e.ctrlKey) {
+          updateElement(selectedElem.id, { height: Number((selectedElem.height + step).toFixed(2)) });
+        } else {
+          updateElement(selectedElem.id, { y: Number((selectedElem.y + step).toFixed(2)) });
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteElement(selectedElem.id);
+      } else if (e.key === 'Escape') {
+        setSelectedElementId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedElem, gridSnap, gridSizeMm, updateElement, deleteElement, setSelectedElementId]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging || !dragStart || !selectedElem) return;
@@ -110,6 +169,34 @@ export const CanvasViewport: React.FC = () => {
         }
 
         updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), y: Number(newY.toFixed(2)) });
+      } else if (dragHandle === 'e') {
+        // Drag right edge horizontally to widen/narrow chosen area
+        newW = Math.max(3, dragStart.elemW + deltaX_mm);
+        if (gridSnap) newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+        updateElement(selectedElem.id, { width: Number(newW.toFixed(2)) });
+      } else if (dragHandle === 'w') {
+        // Drag left edge horizontally
+        newW = Math.max(3, dragStart.elemW - deltaX_mm);
+        newX = dragStart.elemX + deltaX_mm;
+        if (gridSnap) {
+          newX = Math.round(newX / gridSizeMm) * gridSizeMm;
+          newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+        }
+        updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), width: Number(newW.toFixed(2)) });
+      } else if (dragHandle === 's') {
+        // Drag bottom edge vertically
+        newH = Math.max(3, dragStart.elemH + deltaY_mm);
+        if (gridSnap) newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+        updateElement(selectedElem.id, { height: Number(newH.toFixed(2)) });
+      } else if (dragHandle === 'n') {
+        // Drag top edge vertically
+        newY = dragStart.elemY + deltaY_mm;
+        newH = Math.max(3, dragStart.elemH - deltaY_mm);
+        if (gridSnap) {
+          newY = Math.round(newY / gridSizeMm) * gridSizeMm;
+          newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+        }
+        updateElement(selectedElem.id, { y: Number(newY.toFixed(2)), height: Number(newH.toFixed(2)) });
       } else if (dragHandle === 'se') {
         newW = Math.max(3, dragStart.elemW + deltaX_mm);
         newH = Math.max(3, dragStart.elemH + deltaY_mm);
@@ -286,28 +373,160 @@ export const CanvasViewport: React.FC = () => {
                 {/* Element Content Render */}
                 {renderEditorElement(elem, currentRecord, screenDpi)}
 
-                {/* Resize Handles for Selected Element */}
+                {/* 8 Resize Handles for Selected Element */}
                 {isSelected && !elem.locked && (
                   <>
+                    {/* Corners */}
                     <div
                       onMouseDown={(e) => startDrag(e, 'nw', elem)}
                       className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-nwse-resize z-50 shadow-sm"
+                      title="Resize Top-Left"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 'ne', elem)}
                       className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-nesw-resize z-50 shadow-sm"
+                      title="Resize Top-Right"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 'se', elem)}
                       className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-nwse-resize z-50 shadow-sm"
+                      title="Resize Bottom-Right"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 'sw', elem)}
                       className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-nesw-resize z-50 shadow-sm"
+                      title="Resize Bottom-Left"
                     />
-                    {/* Size and Position Overlay */}
-                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-surface-900 text-white text-[10px] px-1.5 py-0.5 rounded shadow whitespace-nowrap pointer-events-none opacity-80">
-                      {elem.x}mm, {elem.y}mm • {elem.width}×{elem.height}mm
+
+                    {/* Edge Midpoint Handles (Crucial for adjusting text area width & height independently) */}
+                    <div
+                      onMouseDown={(e) => startDrag(e, 'e', elem)}
+                      className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ew-resize z-50 shadow-sm hover:scale-125 transition-transform"
+                      title="Choose Width / Adjust Right Edge"
+                    />
+                    <div
+                      onMouseDown={(e) => startDrag(e, 'w', elem)}
+                      className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ew-resize z-50 shadow-sm hover:scale-125 transition-transform"
+                      title="Choose Width / Adjust Left Edge"
+                    />
+                    <div
+                      onMouseDown={(e) => startDrag(e, 'n', elem)}
+                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ns-resize z-50 shadow-sm hover:scale-125 transition-transform"
+                      title="Choose Height / Adjust Top Edge"
+                    />
+                    <div
+                      onMouseDown={(e) => startDrag(e, 's', elem)}
+                      className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ns-resize z-50 shadow-sm hover:scale-125 transition-transform"
+                      title="Choose Height / Adjust Bottom Edge"
+                    />
+
+                    {/* Quick Floating Adjustment Micro-Bar */}
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute -top-9 left-1/2 -translate-x-1/2 bg-surface-900/95 backdrop-blur-xs text-white rounded-lg shadow-xl px-2 py-1 flex items-center gap-1.5 z-[60] border border-surface-700 pointer-events-auto whitespace-nowrap text-[11px]"
+                    >
+                      {/* Center X */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const centeredX = Math.max(0, Number(((doc.dimensions.width - elem.width) / 2).toFixed(2)));
+                          updateElement(elem.id, { x: centeredX });
+                        }}
+                        title="Center Horizontally on Card"
+                        className="px-1.5 py-0.5 rounded hover:bg-surface-800 text-surface-200 hover:text-white flex items-center gap-1 text-[10px] font-medium"
+                      >
+                        <AlignCenter className="w-3 h-3 text-brand-400" />
+                        <span>Center</span>
+                      </button>
+
+                      {/* Auto-Fit Toggle for Text */}
+                      {(elem.type === 'text' || elem.type === 'dynamic-text') && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateElement(elem.id, { autoFit: elem.autoFit === false ? true : false });
+                          }}
+                          title="Toggle Auto-Fit Text to Box"
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
+                            elem.autoFit !== false
+                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
+                              : 'hover:bg-surface-800 text-surface-400'
+                          }`}
+                        >
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          <span>Auto-Fit {elem.autoFit !== false ? 'ON' : 'OFF'}</span>
+                        </button>
+                      )}
+
+                      {/* Full Width Fit */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const fullW = Number((doc.dimensions.width - 4).toFixed(2));
+                          updateElement(elem.id, { x: 2, width: fullW });
+                        }}
+                        title="Set Full Name Banner Width (50mm centered)"
+                        className="px-1.5 py-0.5 rounded hover:bg-surface-800 text-surface-200 hover:text-white flex items-center gap-1 text-[10px] font-medium"
+                      >
+                        <Maximize2 className="w-3 h-3 text-indigo-400" />
+                        <span>Full Width</span>
+                      </button>
+
+                      {/* Precision Nudge Buttons */}
+                      <div className="flex items-center border-l border-surface-700 pl-1.5 gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateElement(elem.id, { x: Number((elem.x - 0.5).toFixed(2)) });
+                          }}
+                          title="Nudge Left 0.5mm"
+                          className="p-1 rounded hover:bg-surface-800 text-surface-300"
+                        >
+                          <ArrowLeftIcon className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateElement(elem.id, { x: Number((elem.x + 0.5).toFixed(2)) });
+                          }}
+                          title="Nudge Right 0.5mm"
+                          className="p-1 rounded hover:bg-surface-800 text-surface-300"
+                        >
+                          <ArrowRightIcon className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateElement(elem.id, { y: Number((elem.y - 0.5).toFixed(2)) });
+                          }}
+                          title="Nudge Up 0.5mm"
+                          className="p-1 rounded hover:bg-surface-800 text-surface-300"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateElement(elem.id, { y: Number((elem.y + 0.5).toFixed(2)) });
+                          }}
+                          title="Nudge Down 0.5mm"
+                          className="p-1 rounded hover:bg-surface-800 text-surface-300"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {/* Coordinates Overlay */}
+                      <span className="text-[9px] font-mono text-surface-400 pl-1 border-l border-surface-700">
+                        {elem.x},{elem.y} • {elem.width}×{elem.height}mm
+                      </span>
                     </div>
                   </>
                 )}
@@ -637,7 +856,21 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();
 
-      const fontSizePx = mmToPx(elem.fontSize, dpi);
+      // Automatically auto-fit font size based on bounding box width & height
+      let effectiveFontSizeMm = elem.fontSize;
+      if (elem.autoFit !== false && (elem.autoFit || elem.type === 'dynamic-text' || elem.fieldKey)) {
+        effectiveFontSizeMm = calculateAutoFitFontSizeMm(
+          rawText,
+          elem.width,
+          elem.height,
+          elem.fontSize,
+          elem.fontFamily || 'Inter',
+          elem.fontWeight || 'bold',
+          elem.minFontSize || 2.0
+        );
+      }
+
+      const fontSizePx = mmToPx(effectiveFontSizeMm, dpi);
 
       const textShadowStyle = elem.textShadow
         ? `${mmToPx(elem.textShadow.offsetX, dpi)}px ${mmToPx(elem.textShadow.offsetY, dpi)}px ${mmToPx(elem.textShadow.blur, dpi)}px ${elem.textShadow.color}`
@@ -647,9 +880,11 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
         ? `${mmToPx(elem.textStrokeWidth, dpi)}px ${elem.textStrokeColor}`
         : undefined;
 
+      const vAlignClass = elem.verticalAlign === 'top' ? 'justify-start' : elem.verticalAlign === 'bottom' ? 'justify-end' : 'justify-center';
+
       return (
         <div
-          className="w-full h-full flex flex-col justify-center leading-tight overflow-hidden break-words pointer-events-none"
+          className={`w-full h-full flex flex-col ${vAlignClass} leading-tight overflow-hidden break-words pointer-events-none`}
           style={{
             color: elem.color || '#000000',
             fontFamily: `"${elem.fontFamily || 'Inter'}", sans-serif`,

@@ -2,6 +2,7 @@ import { RecordEntity } from '../types/database';
 import { RecordFilterOptions, CSVColumnMapping, CSVImportResult } from '../types/record';
 import { supabase, isLiveSupabaseConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/utils';
+import { broadcastSync } from '../lib/sync';
 
 const STORAGE_RECORDS_KEY = 'idforge_user_created_records';
 
@@ -49,8 +50,64 @@ export function extractRecordDetails(data: Record<string, any>, fallbackId: stri
 
 export const recordService = {
   async getRecords(orgId: string, options: RecordFilterOptions = {}): Promise<{ records: RecordEntity[]; total: number }> {
-    const local = getStoredLocalRecords().filter((r) => !orgId || r.organization_id === orgId);
+    const local = getStoredLocalRecords().filter(
+      (r) => !orgId || !r.organization_id || r.organization_id === orgId || r.organization_id === 'default'
+    );
     let combined: RecordEntity[] = [...local];
+
+    // Query local form submissions from localStorage so submitted responses always show in Records
+    try {
+      const localSubsRaw = localStorage.getItem('idforge_user_submissions');
+      const localFormsRaw = localStorage.getItem('idforge_user_created_forms');
+      const formsList: any[] = localFormsRaw ? JSON.parse(localFormsRaw) : [];
+      const autoApproveFormIds = new Set(
+        formsList.filter((f) => f.auto_approve !== false).map((f) => f.id)
+      );
+      // 'form-ptec-primary' is auto-approved by default
+      autoApproveFormIds.add('form-ptec-primary');
+
+      if (localSubsRaw) {
+        const localSubs: any[] = JSON.parse(localSubsRaw);
+        for (const sub of localSubs) {
+          if (sub.status === 'rejected') continue;
+          if (orgId && sub.organization_id && sub.organization_id !== orgId && sub.organization_id !== 'default') {
+            continue;
+          }
+          const { identifier, fullName } = extractRecordDetails(sub.data || {}, sub.id);
+          // Deduplicate strictly by linked record_id or exact submission ID, or identical student name AND roll
+          const alreadyExists = combined.some(
+            (r) =>
+              (sub.record_id && r.id === sub.record_id) ||
+              r.id === sub.id ||
+              (r.identifier === identifier && r.full_name.trim().toLowerCase() === fullName.trim().toLowerCase())
+          );
+          if (!alreadyExists) {
+            const isApproved = sub.status === 'approved' || autoApproveFormIds.has(sub.form_id);
+            combined.push({
+              id: sub.record_id || sub.id,
+              organization_id: sub.organization_id || orgId || 'default',
+              identifier,
+              full_name: fullName,
+              data: {
+                ...sub.data,
+                student_name: fullName,
+                full_name: fullName,
+                student_id: identifier,
+                student_roll: identifier,
+                roll_no: identifier,
+                photo_url: sub.data?.photo_url || sub.data?.photo || '',
+              },
+              status: isApproved ? 'approved' : 'pending',
+              source: 'form_submission',
+              created_at: sub.created_at || new Date().toISOString(),
+              updated_at: sub.updated_at || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse local form submissions for records:', e);
+    }
 
     if (isLiveSupabaseConfigured) {
       try {
@@ -63,7 +120,13 @@ export const recordService = {
         if (!error && dbRecords) {
           combined = [...dbRecords];
           for (const l of local) {
-            if (!combined.some((c) => c.id === l.id || c.identifier === l.identifier)) {
+            if (
+              !combined.some(
+                (c) =>
+                  c.id === l.id ||
+                  (c.identifier === l.identifier && c.full_name.trim().toLowerCase() === l.full_name.trim().toLowerCase())
+              )
+            ) {
               combined.push(l);
             }
           }
@@ -81,7 +144,10 @@ export const recordService = {
             if (sub.status === 'rejected') continue;
             const { identifier, fullName } = extractRecordDetails(sub.data || {}, sub.id);
             const alreadyExists = combined.some(
-              (r) => r.id === sub.record_id || r.id === sub.id || r.identifier === identifier
+              (r) =>
+                (sub.record_id && r.id === sub.record_id) ||
+                r.id === sub.id ||
+                (r.identifier === identifier && r.full_name.trim().toLowerCase() === fullName.trim().toLowerCase())
             );
 
             if (!alreadyExists) {
@@ -155,23 +221,32 @@ export const recordService = {
 
   async createRecord(
     orgId: string,
-    input: { identifier: string; fullName: string; data: Record<string, any>; status?: 'approved' | 'pending' }
+    input: {
+      identifier: string;
+      fullName: string;
+      data: Record<string, any>;
+      status?: 'approved' | 'pending';
+      source?: 'manual' | 'form_submission' | 'csv_import';
+    }
   ): Promise<RecordEntity> {
     const newRecord: RecordEntity = {
       id: generateUUID(),
-      organization_id: orgId,
+      organization_id: orgId || 'default',
       identifier: input.identifier,
       full_name: input.fullName,
       data: {
         ...input.data,
         student_id: input.identifier,
+        student_roll: input.identifier,
+        roll_no: input.identifier,
         employee_id: input.identifier,
         student_name: input.fullName,
         employee_name: input.fullName,
         full_name: input.fullName,
+        photo_url: input.data?.photo_url || input.data?.photo || '',
       },
       status: input.status || 'approved',
-      source: 'manual',
+      source: (input.source as any) || 'manual',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -185,6 +260,7 @@ export const recordService = {
         if (!error && data) {
           const updated = [data, ...local.filter((r) => r.id !== data.id)];
           saveStoredLocalRecords(updated);
+          broadcastSync('RECORDS_UPDATED', data.id);
           return data;
         }
       } catch (e) {
@@ -192,6 +268,7 @@ export const recordService = {
       }
     }
 
+    broadcastSync('RECORDS_UPDATED', newRecord.id);
     return newRecord;
   },
 
@@ -203,7 +280,10 @@ export const recordService = {
         .eq('id', recordId)
         .select()
         .single();
-      if (!error && data) return data;
+      if (!error && data) {
+        broadcastSync('RECORDS_UPDATED', recordId);
+        return data;
+      }
     }
 
     const local = getStoredLocalRecords();
@@ -215,6 +295,7 @@ export const recordService = {
       updated_at: new Date().toISOString(),
     };
     saveStoredLocalRecords(local);
+    broadcastSync('RECORDS_UPDATED', recordId);
     return local[index];
   },
 
@@ -229,6 +310,7 @@ export const recordService = {
       const updated = await this.updateRecord(id, { status } as any);
       if (updated) count++;
     }
+    broadcastSync('RECORDS_UPDATED');
     return count;
   },
 
@@ -321,6 +403,7 @@ export const recordService = {
       }
     }
 
+    broadcastSync('RECORDS_UPDATED');
     return result;
   },
 
@@ -334,6 +417,18 @@ export const recordService = {
     }
     const filtered = getStoredLocalRecords().filter((r) => r.id !== recordId);
     saveStoredLocalRecords(filtered);
+
+    // Also clean up from local submissions if linked
+    try {
+      const subsRaw = localStorage.getItem('idforge_user_submissions');
+      if (subsRaw) {
+        const subs: any[] = JSON.parse(subsRaw);
+        const updatedSubs = subs.filter((s) => s.id !== recordId && s.record_id !== recordId);
+        localStorage.setItem('idforge_user_submissions', JSON.stringify(updatedSubs));
+      }
+    } catch {}
+
+    broadcastSync('RECORDS_UPDATED', recordId);
     return true;
   },
 
@@ -348,6 +443,17 @@ export const recordService = {
     const set = new Set(recordIds);
     const filtered = getStoredLocalRecords().filter((r) => !set.has(r.id));
     saveStoredLocalRecords(filtered);
+
+    try {
+      const subsRaw = localStorage.getItem('idforge_user_submissions');
+      if (subsRaw) {
+        const subs: any[] = JSON.parse(subsRaw);
+        const updatedSubs = subs.filter((s) => !set.has(s.id) && (!s.record_id || !set.has(s.record_id)));
+        localStorage.setItem('idforge_user_submissions', JSON.stringify(updatedSubs));
+      }
+    } catch {}
+
+    broadcastSync('RECORDS_UPDATED');
     return true;
   },
 };

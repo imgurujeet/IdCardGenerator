@@ -9,7 +9,6 @@ import {
   Grid,
   Save,
   Download,
-  Users,
   CheckCircle2,
   AlertCircle,
   Sparkles,
@@ -27,6 +26,8 @@ import {
   Image as ImageIcon,
   Archive,
   Layers,
+  SlidersHorizontal,
+  UserCheck,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { templateService } from '../../../services/template.service';
@@ -70,11 +71,13 @@ export const EditorToolbar: React.FC = () => {
     undo,
     redo,
     setSampleRecordIndex,
+    updateCurrentSampleRecord,
     markSaved,
   } = useEditorStore();
 
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [showRecordEditorModal, setShowRecordEditorModal] = useState(false);
 
   // Form Generator Modal State
   const [showFormModal, setShowFormModal] = useState(false);
@@ -489,10 +492,12 @@ export const EditorToolbar: React.FC = () => {
 
         {/* Right: Data Switcher, Create Form, Quick Export & Save */}
         <div className="flex items-center gap-2">
-          {/* Sample Record Preview Selector (Responsive with Prev/Next Stepper) */}
+          {/* Real Data & Live Form Submission Selector */}
           {availableSampleRecords.length > 0 && (
-            <div className="flex items-center gap-1 text-xs bg-surface-50 border border-surface-200 px-1.5 py-1 rounded-lg">
-              <Users className="w-3.5 h-3.5 text-surface-500 shrink-0 hidden sm:inline" />
+            <div className="flex items-center gap-1.5 text-xs bg-surface-50 border border-surface-200 px-2 py-1 rounded-lg shadow-2xs">
+              <span className="hidden lg:inline text-[10px] font-bold uppercase tracking-wider text-surface-500">
+                Live Data:
+              </span>
               <button
                 type="button"
                 disabled={sampleRecordIndex <= 0}
@@ -505,13 +510,18 @@ export const EditorToolbar: React.FC = () => {
               <select
                 value={sampleRecordIndex}
                 onChange={(e) => setSampleRecordIndex(Number(e.target.value))}
-                className="bg-transparent font-medium text-surface-900 outline-none cursor-pointer text-xs max-w-[110px] sm:max-w-[150px] truncate"
+                className="bg-transparent font-semibold text-surface-900 outline-none cursor-pointer text-xs max-w-[130px] sm:max-w-[180px] truncate"
+                title="Choose submitted student / real record to preview on front and back"
               >
-                {availableSampleRecords.map((rec, i) => (
-                  <option key={i} value={i}>
-                    {rec.student_name || rec.employee_name || rec.full_name || `Record #${i + 1}`}
-                  </option>
-                ))}
+                {availableSampleRecords.map((rec, i) => {
+                  const name = rec.student_name || rec.full_name || rec.name || `Record #${i + 1}`;
+                  const roll = rec.roll_no || rec.student_roll || rec.identifier;
+                  return (
+                    <option key={i} value={i}>
+                      {name} {roll ? `(${roll})` : ''}
+                    </option>
+                  );
+                })}
               </select>
               <button
                 type="button"
@@ -521,6 +531,16 @@ export const EditorToolbar: React.FC = () => {
                 title="Next Record"
               >
                 <ChevronRight className="w-3.5 h-3.5 text-surface-600" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowRecordEditorModal(true)}
+                title="Edit or Test Real Information Live on Card"
+                className="ml-1 p-1 rounded hover:bg-brand-100 text-brand-700 bg-brand-50 border border-brand-200 transition-colors flex items-center gap-1 text-[11px] font-semibold"
+              >
+                <SlidersHorizontal className="w-3 h-3 text-brand-600" />
+                <span className="hidden sm:inline">Edit Data</span>
               </button>
             </div>
           )}
@@ -864,6 +884,172 @@ export const EditorToolbar: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Live Record Information Editor Modal */}
+      {showRecordEditorModal && (
+        <div className="fixed inset-0 z-50 bg-surface-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-card border border-surface-200 w-full max-w-lg max-h-[90vh] flex flex-col p-6 relative">
+            <button
+              onClick={() => setShowRecordEditorModal(false)}
+              className="absolute top-4 right-4 text-surface-400 hover:text-surface-700 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <UserCheck className="w-5 h-5 text-brand-600" />
+              <h2 className="text-lg font-bold text-surface-900">Live Preview & Record Data</h2>
+            </div>
+            <p className="text-xs text-surface-500 mb-4">
+              Edit any information in real time to see both Front & Back card sides auto-adjust their font size and layout.
+            </p>
+
+            {(() => {
+              const activeRec = availableSampleRecords[sampleRecordIndex] || {};
+              return (
+                <div className="space-y-3 overflow-y-auto pr-1 flex-1 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Full Legal Name</label>
+                      <input
+                        type="text"
+                        value={activeRec.student_name || activeRec.full_name || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ student_name: e.target.value, full_name: e.target.value })}
+                        placeholder="e.g. Rahul Kumar Varma"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Roll Number</label>
+                      <input
+                        type="text"
+                        value={activeRec.roll_no || activeRec.student_roll || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ roll_no: e.target.value, student_roll: e.target.value })}
+                        placeholder="e.g. 148"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Academic Session</label>
+                      <input
+                        type="text"
+                        value={activeRec.session || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ session: e.target.value })}
+                        placeholder="e.g. 2026-28"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Blood Group</label>
+                      <input
+                        type="text"
+                        value={activeRec.blood_group || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ blood_group: e.target.value })}
+                        placeholder="e.g. AB-"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Father's Name (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.father_name || activeRec.Father_name || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ father_name: e.target.value, Father_name: e.target.value })}
+                        placeholder="e.g. Dilip Paswan"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Date of Birth (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.dob || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ dob: e.target.value })}
+                        placeholder="e.g. 08-03-2003"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Mobile Number (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.mobile || activeRec.Mobile_number || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ mobile: e.target.value, Mobile_number: e.target.value })}
+                        placeholder="e.g. 9876543210"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Police Station (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.police_station || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ police_station: e.target.value })}
+                        placeholder="e.g. NTPC, Barh"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Village / Address (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.address || activeRec.full_address || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ address: e.target.value, full_address: e.target.value })}
+                        placeholder="e.g. Vill+PO- Railli"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">City / District (Back Side)</label>
+                      <input
+                        type="text"
+                        value={activeRec.district || activeRec.city || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ district: e.target.value, city: e.target.value })}
+                        placeholder="e.g. Patna-803221"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-surface-700 block mb-1">Photo Image URL</label>
+                    <input
+                      type="text"
+                      value={activeRec.photo_url || ''}
+                      onChange={(e) => updateCurrentSampleRecord({ photo_url: e.target.value })}
+                      placeholder="https://... or /templates/ptec/ptec_sample_front.jpg"
+                      className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-[11px] font-mono"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="pt-3 border-t border-surface-200 mt-4 flex items-center justify-between">
+              <span className="text-[11px] text-emerald-700 font-medium">✓ Changes apply live to card preview</span>
+              <button
+                type="button"
+                onClick={() => setShowRecordEditorModal(false)}
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+              >
+                Apply & Close
+              </button>
+            </div>
           </div>
         </div>
       )}

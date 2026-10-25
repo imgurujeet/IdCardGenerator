@@ -13,6 +13,11 @@ import {
   Underline as UnderlineIcon,
   Sparkles,
   Plus,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Maximize2,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { resolveElementText } from '../../../lib/utils';
@@ -298,6 +303,93 @@ export const PropertiesSidebar: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Quick Adjustment & Precision Nudge */}
+          <div className="mt-2.5 p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
+            <span className="text-[10px] font-semibold text-surface-700 block uppercase tracking-wider">
+              Quick Adjustments & Alignment
+            </span>
+            <div className="grid grid-cols-3 gap-1 text-[10px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const cx = Math.max(0, Number(((doc.dimensions.width - selectedElem.width) / 2).toFixed(2)));
+                  updateElement(selectedElem.id, { x: cx });
+                }}
+                className="py-1 px-1.5 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center gap-1 shadow-2xs"
+                title="Center Horizontally on Card"
+              >
+                <AlignCenter className="w-3 h-3 text-brand-600" />
+                <span>Center X</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cy = Math.max(0, Number(((doc.dimensions.height - selectedElem.height) / 2).toFixed(2)));
+                  updateElement(selectedElem.id, { y: cy });
+                }}
+                className="py-1 px-1.5 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center gap-1 shadow-2xs"
+                title="Center Vertically on Card"
+              >
+                <AlignCenter className="w-3 h-3 text-brand-600 rotate-90" />
+                <span>Center Y</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fullW = Number((doc.dimensions.width - 4).toFixed(2));
+                  updateElement(selectedElem.id, { x: 2, width: fullW });
+                }}
+                className="py-1 px-1.5 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center gap-1 shadow-2xs"
+                title="Fit Width Across Card (50mm)"
+              >
+                <Maximize2 className="w-3 h-3 text-indigo-600" />
+                <span>Full Width</span>
+              </button>
+            </div>
+
+            {/* Precision Nudge D-pad */}
+            <div className="pt-1.5 border-t border-surface-200">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-surface-500 font-medium">Nudge (0.5mm step):</span>
+                <span className="text-[9px] text-surface-400 font-mono">Keyboard Arrows active</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                <button
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { x: Number((selectedElem.x - 0.5).toFixed(2)) })}
+                  className="py-1 bg-white border border-surface-300 hover:bg-surface-100 rounded text-surface-700 flex items-center justify-center shadow-2xs"
+                  title="Move Left 0.5mm"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { x: Number((selectedElem.x + 0.5).toFixed(2)) })}
+                  className="py-1 bg-white border border-surface-300 hover:bg-surface-100 rounded text-surface-700 flex items-center justify-center shadow-2xs"
+                  title="Move Right 0.5mm"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { y: Number((selectedElem.y - 0.5).toFixed(2)) })}
+                  className="py-1 bg-white border border-surface-300 hover:bg-surface-100 rounded text-surface-700 flex items-center justify-center shadow-2xs"
+                  title="Move Up 0.5mm"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { y: Number((selectedElem.y + 0.5).toFixed(2)) })}
+                  className="py-1 bg-white border border-surface-300 hover:bg-surface-100 rounded text-surface-700 flex items-center justify-center shadow-2xs"
+                  title="Move Down 0.5mm"
+                >
+                  <ArrowDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Text Typography & Photoshop Styling */}
@@ -562,6 +654,79 @@ export const PropertiesSidebar: React.FC = () => {
                 />
                 <span className="font-mono text-[10px] uppercase text-surface-600">{selectedElem.color || '#000'}</span>
               </div>
+            </div>
+
+            {/* Auto-Fit to Selected Box Area Feature */}
+            <div className="p-3 bg-emerald-50/70 rounded-lg border border-emerald-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-emerald-950 text-[11px] flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedElem.autoFit !== false}
+                    onChange={(e) => updateElement(selectedElem.id, { autoFit: e.target.checked })}
+                    className="rounded text-emerald-600 cursor-pointer"
+                  />
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Auto-Fit Text to Selected Area
+                </label>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                  selectedElem.autoFit !== false ? 'bg-emerald-200 text-emerald-800' : 'bg-surface-200 text-surface-600'
+                }`}>
+                  {selectedElem.autoFit !== false ? 'ACTIVE' : 'OFF'}
+                </span>
+              </div>
+              <p className="text-[10px] text-emerald-800 leading-relaxed">
+                When student names or text are long, font size automatically scales down to fit your chosen width and height perfectly without breaking out of the box.
+              </p>
+
+              {selectedElem.autoFit !== false && (
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-emerald-200/60">
+                  <div>
+                    <label className="text-[10px] text-emerald-900 block mb-0.5">Min Font Size (mm)</label>
+                    <input
+                      type="number"
+                      step="0.2"
+                      value={selectedElem.minFontSize || 2.0}
+                      onChange={(e) => updateElement(selectedElem.id, { minFontSize: Number(e.target.value) })}
+                      className="w-full px-2 py-1 bg-white border border-emerald-300 rounded font-mono text-xs outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-emerald-900 block mb-0.5">Vertical Alignment</label>
+                    <div className="flex items-center border border-emerald-300 rounded bg-white p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => updateElement(selectedElem.id, { verticalAlign: 'top' })}
+                        title="Align Top"
+                        className={`flex-1 py-0.5 text-[9px] rounded font-semibold ${
+                          selectedElem.verticalAlign === 'top' ? 'bg-emerald-600 text-white' : 'text-surface-600'
+                        }`}
+                      >
+                        Top
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateElement(selectedElem.id, { verticalAlign: 'middle' })}
+                        title="Align Middle (Center)"
+                        className={`flex-1 py-0.5 text-[9px] rounded font-semibold ${
+                          !selectedElem.verticalAlign || selectedElem.verticalAlign === 'middle' ? 'bg-emerald-600 text-white' : 'text-surface-600'
+                        }`}
+                      >
+                        Mid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateElement(selectedElem.id, { verticalAlign: 'bottom' })}
+                        title="Align Bottom"
+                        className={`flex-1 py-0.5 text-[9px] rounded font-semibold ${
+                          selectedElem.verticalAlign === 'bottom' ? 'bg-emerald-600 text-white' : 'text-surface-600'
+                        }`}
+                      >
+                        Btm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Photoshop Text Shadow Section */}

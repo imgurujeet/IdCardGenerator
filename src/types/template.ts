@@ -52,6 +52,7 @@ export interface TextElement extends BaseElement {
   fontWeight: 'normal' | 'medium' | 'semibold' | 'bold';
   fontStyle: 'normal' | 'italic';
   textAlign: 'left' | 'center' | 'right' | 'justify';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   color: string;                 // hex
   letterSpacing?: number;
   lineHeight?: number;
@@ -61,6 +62,8 @@ export interface TextElement extends BaseElement {
   textStrokeColor?: string;
   textStrokeWidth?: number;      // mm
   autoFit?: boolean;
+  minFontSize?: number;          // mm
+  maxFontSize?: number;          // mm
 }
 
 export interface ImageElement extends BaseElement {
