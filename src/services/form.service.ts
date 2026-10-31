@@ -368,13 +368,98 @@ export const formService = {
     return false;
   },
 
-  async submitPublicResponse(slug: string, data: Record<string, any>): Promise<{ success: boolean; submissionId?: string; error?: string }> {
+  async submitPublicResponse(
+    slug: string,
+    data: Record<string, any>,
+    options?: { existingSubmissionId?: string; allowUpdate?: boolean }
+  ): Promise<{ success: boolean; submissionId?: string; isUpdate?: boolean; error?: string }> {
     const form = await this.getPublicFormBySlug(slug);
     if (!form || !form.accepting_submissions) {
       return { success: false, error: 'Form is not active or no longer accepting responses.' };
     }
 
     const localSubs = getStoredLocalSubmissions();
+
+    // Check if an existing submission matches by ID or by 10-digit mobile number
+    const cleanPhone = String(
+      data['mobile'] ||
+      data['phone'] ||
+      data['mobile_number'] ||
+      data['Mobile_number'] ||
+      data['contact'] ||
+      ''
+    ).replace(/\D/g, '').slice(-10);
+
+    let existingSub: FormSubmissionEntity | null = null;
+    if (options?.existingSubmissionId) {
+      existingSub = localSubs.find((s) => s.id === options.existingSubmissionId) || null;
+    } else if (cleanPhone.length === 10) {
+      existingSub = localSubs.find((s) => {
+        if (s.form_id !== form.id) return false;
+        const subPhone = String(
+          s.data?.['mobile'] ||
+          s.data?.['phone'] ||
+          s.data?.['mobile_number'] ||
+          s.data?.['Mobile_number'] ||
+          s.data?.['contact'] ||
+          ''
+        ).replace(/\D/g, '').slice(-10);
+        return subPhone === cleanPhone;
+      }) || null;
+    }
+
+    // UPDATE EXISTING SUBMISSION MODE
+    if (existingSub) {
+      const mergedData = { ...existingSub.data, ...data };
+      existingSub.data = mergedData;
+      existingSub.updated_at = new Date().toISOString();
+
+      // If an existing approved record was linked, update the record as well so ID card syncs
+      if (existingSub.record_id) {
+        try {
+          const fullName =
+            mergedData['student_name'] ||
+            mergedData['candidate_name'] ||
+            mergedData['employee_name'] ||
+            mergedData['full_name'] ||
+            mergedData['name'] ||
+            'Approved Student';
+
+          const identifier =
+            mergedData['roll_no'] ||
+            mergedData['student_roll'] ||
+            mergedData['roll'] ||
+            mergedData['student_id'] ||
+            mergedData['employee_id'] ||
+            cleanPhone ||
+            `REC-${Date.now().toString().slice(-5)}`;
+
+          await recordService.updateRecord(existingSub.record_id, {
+            identifier: String(identifier),
+            full_name: String(fullName),
+            data: mergedData,
+          });
+        } catch (err) {
+          console.warn('Record update warning:', err);
+        }
+      }
+
+      saveStoredLocalSubmissions(localSubs);
+
+      if (isLiveSupabaseConfigured) {
+        try {
+          await supabase
+            .from('form_submissions')
+            .update({ data: mergedData, updated_at: existingSub.updated_at })
+            .eq('id', existingSub.id);
+        } catch (e) {
+          console.warn('Supabase form_submissions update exception:', e);
+        }
+      }
+
+      broadcastSync('ALL', existingSub.id);
+      return { success: true, submissionId: existingSub.id, isUpdate: true };
+    }
 
     // Check duplicate if enforce_unique is enabled
     if (form.enforce_unique && form.unique_field_key) {
@@ -389,7 +474,7 @@ export const formService = {
         if (isDuplicate) {
           return {
             success: false,
-            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Only one submission is permitted per student.`,
+            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Enter your registered mobile number to update your details.`,
           };
         }
       }
@@ -474,6 +559,76 @@ export const formService = {
 
     broadcastSync('ALL', subId);
     return { success: true, submissionId: subId };
+  },
+
+  /**
+   * Search for an existing submission by 10-digit mobile number on this form.
+   * Enables auto-fetching previous details for instant update.
+   */
+  async findSubmissionByMobile(
+    formId: string,
+    mobile: string,
+    slug?: string
+  ): Promise<FormSubmissionEntity | null> {
+    const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+    if (!cleanMobile || cleanMobile.length < 10) return null;
+
+    // 1. Search local submissions
+    const local = getStoredLocalSubmissions();
+    const localMatch = local.find((s) => {
+      if (s.form_id !== formId) return false;
+      const subPhone = String(
+        s.data?.['mobile'] ||
+        s.data?.['phone'] ||
+        s.data?.['mobile_number'] ||
+        s.data?.['Mobile_number'] ||
+        s.data?.['contact'] ||
+        ''
+      ).replace(/\D/g, '').slice(-10);
+      return subPhone === cleanMobile;
+    });
+
+    if (localMatch) return localMatch;
+
+    // 2. Query Supabase if live
+    if (isLiveSupabaseConfigured) {
+      try {
+        if (slug) {
+          const { data: rpcData, error: rpcErr } = await supabase.rpc('get_submission_by_mobile', {
+            p_slug: slug,
+            p_mobile: cleanMobile,
+          });
+          if (!rpcErr && rpcData && rpcData.id) {
+            return rpcData as FormSubmissionEntity;
+          }
+        }
+
+        const { data, error } = await supabase
+          .from('form_submissions')
+          .select('*')
+          .eq('form_id', formId)
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          const match = data.find((s) => {
+            const subPhone = String(
+              s.data?.['mobile'] ||
+              s.data?.['phone'] ||
+              s.data?.['mobile_number'] ||
+              s.data?.['Mobile_number'] ||
+              s.data?.['contact'] ||
+              ''
+            ).replace(/\D/g, '').slice(-10);
+            return subPhone === cleanMobile;
+          });
+          if (match) return match as FormSubmissionEntity;
+        }
+      } catch (err) {
+        console.warn('findSubmissionByMobile query error:', err);
+      }
+    }
+
+    return null;
   },
 
   async getSubmissions(formId: string): Promise<FormSubmissionEntity[]> {

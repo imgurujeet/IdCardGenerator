@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { TemplateDocument, TemplateElement } from '../../../types/template';
+import { TemplateDocument, TemplateElement, TextElement } from '../../../types/template';
 import { generateId } from '../../../lib/utils';
+import { POPULAR_GOOGLE_FONTS } from '../../../lib/fontLoader';
 
 export const DEFAULT_PREVIEW_RECORD: Record<string, any> = {
   full_name: 'Abhishek Kumar',
@@ -8,15 +9,25 @@ export const DEFAULT_PREVIEW_RECORD: Record<string, any> = {
   student_name: 'Abhishek Kumar',
   student_id: 'STU-141',
   roll_no: '141',
+  student_roll: '141',
   session: '2024-2026',
   father_name: 'Dilip Paswan',
+  Father_name: 'Dilip Paswan',
+  mother_name: 'Sunita Devi',
   dob: '08-03-2003',
   blood_group: 'B+',
   mobile: '+91 8102327260',
   emergency_contact: '+91 9876543210',
-  address: 'Vill+PO- Railli',
+  address_type: 'village',
+  village_name: 'Railli',
+  village_ward: 'Vill- Railli',
+  address: 'Vill- Railli',
   police_station: 'NTPC, Barh',
-  district: 'Patna-803221',
+  district: 'Patna',
+  state: 'Bihar',
+  pincode: '803221',
+  district_pin: 'Patna - 803221',
+  full_address: 'Vill- Railli, P.S.- NTPC, Barh, Dist- Patna (Bihar) - 803221',
   course: 'D.El.Ed',
   department: 'Primary Education',
   valid_thru: '2026-12-31',
@@ -51,10 +62,13 @@ interface EditorState {
   updateCurrentSampleRecord: (updates: Record<string, any>) => void;
   setBackgroundImage: (side: 'front' | 'back', url: string, opacity?: number) => void;
   removeBackgroundImage: (side: 'front' | 'back') => void;
-  addCustomFont: (fontName: string, fontUrl: string) => void;
+  addCustomFont: (fontName: string, fontUrl?: string) => void;
+  detectedSystemFonts: string[];
+  setDetectedSystemFonts: (fonts: string[]) => void;
 
   // Element actions
   addElement: (element: Partial<TemplateElement> & { type: TemplateElement['type']; name: string }) => void;
+  addTextBoxBelow: (targetElemId?: string) => void;
   updateElement: (id: string, updates: Partial<TemplateElement>) => void;
   deleteElement: (id: string) => void;
   duplicateElement: (id: string) => void;
@@ -79,7 +93,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isSaving: false,
   sampleRecordIndex: 0,
   availableSampleRecords: [DEFAULT_PREVIEW_RECORD],
-  customFonts: ['Inter', 'Roboto', 'Montserrat', 'Oswald', 'Outfit', 'Playfair Display', 'Poppins'],
+  customFonts: [...POPULAR_GOOGLE_FONTS],
+  detectedSystemFonts: [],
+  setDetectedSystemFonts: (fonts) => {
+    set({ detectedSystemFonts: fonts });
+  },
   setAvailableSampleRecords: (records) => {
     set({
       availableSampleRecords: records.length > 0 ? records : [DEFAULT_PREVIEW_RECORD],
@@ -153,6 +171,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   addCustomFont: (fontName, fontUrl) => {
+    if (!fontUrl) {
+      set((state) => ({
+        customFonts: Array.from(new Set([...state.customFonts, fontName])),
+      }));
+      return;
+    }
     // Dynamically inject @font-face into document
     const fontFace = new FontFace(fontName, `url(${fontUrl})`);
     fontFace.load().then((loadedFont) => {
@@ -238,6 +262,94 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       document: newDoc,
       selectedElementId: baseElem.id,
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+      isDirty: true,
+    });
+  },
+
+  addTextBoxBelow: (targetElemId) => {
+    const { document: doc, activeSide, selectedElementId, history, historyIndex, gridSnap, gridSizeMm } = get();
+    if (!doc) return;
+
+    const newDoc = JSON.parse(JSON.stringify(doc)) as TemplateDocument;
+    if (activeSide === 'back' && !newDoc.layouts.back) {
+      newDoc.layouts.back = { backgroundColor: '#ffffff', elements: [] };
+    }
+    const layout = activeSide === 'back' && newDoc.layouts.back ? newDoc.layouts.back : newDoc.layouts.front;
+    const maxZ = layout.elements.reduce((max, el) => Math.max(max, el.zIndex || 0), 0);
+
+    const refId = targetElemId || selectedElementId;
+    const refElem = refId ? layout.elements.find((e) => e.id === refId) : null;
+
+    let newX = 5;
+    let newY = 30;
+    let newWidth = Math.max(20, Number((doc.dimensions.width - 10).toFixed(2)));
+    let newHeight = 5.0;
+    let fontFamily = 'Inter';
+    let fontSize = 3.5;
+    let fontWeight: 'bold' | 'normal' | 'medium' | 'semibold' = 'normal';
+    let fontStyle: 'normal' | 'italic' = 'normal';
+    let color = '#000000';
+    let textAlign: 'left' | 'center' | 'right' = 'left';
+
+    if (refElem) {
+      newX = refElem.x;
+      // Position 1.5mm directly below target element
+      newY = Math.min(doc.dimensions.height - 6, Number((refElem.y + refElem.height + 1.5).toFixed(2)));
+      newWidth = refElem.width;
+      newHeight = Math.min(8.0, Math.max(4.0, Number((refElem.height * 0.9).toFixed(2))));
+
+      if (refElem.type === 'text' || refElem.type === 'dynamic-text') {
+        const textElem = refElem as TextElement;
+        fontFamily = textElem.fontFamily || 'Inter';
+        fontSize = Math.min(textElem.fontSize || 3.5, 4.0);
+        fontWeight = textElem.fontWeight === 'bold' ? 'normal' : (textElem.fontWeight || 'normal');
+        fontStyle = textElem.fontStyle || 'normal';
+        color = textElem.color || '#000000';
+        textAlign = textElem.textAlign === 'justify' ? 'left' : (textElem.textAlign || 'left');
+      }
+    }
+
+    if (gridSnap) {
+      newX = Math.round(newX / gridSizeMm) * gridSizeMm;
+      newY = Math.round(newY / gridSizeMm) * gridSizeMm;
+    }
+
+    const newElem: TextElement = {
+      id: generateId('text'),
+      name: refElem ? `Text below ${refElem.name || 'element'}` : 'Blank Text Box',
+      type: 'text',
+      x: newX,
+      y: newY,
+      width: newWidth,
+      height: newHeight,
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      visible: true,
+      zIndex: maxZ + 1,
+      content: '', // Blank, ready for typing!
+      fontFamily,
+      fontSize,
+      fontWeight,
+      fontStyle,
+      color,
+      textAlign,
+      lineHeight: 1.25,
+      autoFit: true,
+      minFontSize: 1.8,
+    };
+
+    layout.elements.push(newElem);
+
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(newDoc)));
+    if (newHistory.length > MAX_HISTORY) newHistory.shift();
+
+    set({
+      document: newDoc,
+      selectedElementId: newElem.id,
       history: newHistory,
       historyIndex: newHistory.length - 1,
       isDirty: true,

@@ -1,27 +1,24 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useEditorStore } from '../store/useEditorStore';
-import { mmToPx, pxToMm, resolveElementText, getRecordFieldValue, calculateAutoFitFontSizeMm } from '../../../lib/utils';
+import {
+  mmToPx,
+  pxToMm,
+  resolveElementText,
+  getRecordFieldValue,
+  calculateAutoFitFontSizeMm,
+  wrapTextToLines,
+  createTextMeasureFn,
+} from '../../../lib/utils';
 import { TemplateElement } from '../../../types/template';
 import {
-  ArrowUpToLine,
-  ArrowDownToLine,
-  ArrowUp,
-  ArrowDown,
   ArrowLeft as ArrowLeftIcon,
   ArrowRight as ArrowRightIcon,
-  Copy,
-  Trash2,
-  Lock,
-  Unlock,
+  ArrowUp,
+  ArrowDown,
   Sparkles,
-  Type,
-  Image as ImageIcon,
-  QrCode,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
   AlignCenter,
   Maximize2,
+  Plus,
 } from 'lucide-react';
 
 export const CanvasViewport: React.FC = () => {
@@ -37,9 +34,7 @@ export const CanvasViewport: React.FC = () => {
     setSelectedElementId,
     updateElement,
     deleteElement,
-    duplicateElement,
-    reorderElement,
-    addElement,
+    addTextBoxBelow,
     setZoom,
   } = useEditorStore();
 
@@ -48,26 +43,29 @@ export const CanvasViewport: React.FC = () => {
   const [dragHandle, setDragHandle] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number; elemX: number; elemY: number; elemW: number; elemH: number } | null>(null);
 
-  // Floating right-click context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    element: TemplateElement | null;
-  } | null>(null);
-
-  // Close context menu on outside click or escape
+  // Photoshop-style Ctrl/Alt + Mouse Wheel zoom
   useEffect(() => {
-    const handleClose = () => setContextMenu(null);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setContextMenu(null);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Zoom if Ctrl, Meta (Cmd on Mac), or Alt key is held down
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const delta = e.deltaY < 0 ? 0.15 : -0.15;
+        const currentZoom = useEditorStore.getState().zoom;
+        const newZoom = Math.max(0.5, Math.min(3.5, Number((currentZoom + delta).toFixed(2))));
+        setZoom(newZoom);
+      }
     };
-    window.addEventListener('click', handleClose);
-    window.addEventListener('keydown', handleKeyDown);
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
     return () => {
-      window.removeEventListener('click', handleClose);
-      window.removeEventListener('keydown', handleKeyDown);
+      container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [setZoom]);
 
   if (!doc) {
     return (
@@ -275,7 +273,6 @@ export const CanvasViewport: React.FC = () => {
     if (e.button !== 0) return;
 
     setSelectedElementId(elem.id);
-    setContextMenu(null);
     if (elem.locked) return;
 
     setIsDragging(true);
@@ -293,17 +290,10 @@ export const CanvasViewport: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      onClick={() => {
-        setSelectedElementId(null);
-        setContextMenu(null);
-      }}
+      onClick={() => setSelectedElementId(null)}
       onContextMenu={(e) => {
+        // Disable intrusive right click context menu per user request
         e.preventDefault();
-        setContextMenu({
-          x: e.clientX,
-          y: e.clientY,
-          element: null,
-        });
       }}
       className="flex-1 overflow-auto bg-surface-100 flex items-center justify-center p-8 select-none relative"
       style={{
@@ -351,11 +341,6 @@ export const CanvasViewport: React.FC = () => {
                   e.preventDefault();
                   e.stopPropagation();
                   setSelectedElementId(elem.id);
-                  setContextMenu({
-                    x: e.clientX,
-                    y: e.clientY,
-                    element: elem,
-                  });
                 }}
                 className={`absolute cursor-move group transition-[outline] ${
                   isSelected ? 'outline outline-2 outline-brand-600' : 'hover:outline hover:outline-1 hover:outline-brand-400'
@@ -398,7 +383,7 @@ export const CanvasViewport: React.FC = () => {
                       title="Resize Bottom-Left"
                     />
 
-                    {/* Edge Midpoint Handles (Crucial for adjusting text area width & height independently) */}
+                    {/* Edge Midpoint Handles */}
                     <div
                       onMouseDown={(e) => startDrag(e, 'e', elem)}
                       className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ew-resize z-50 shadow-sm hover:scale-125 transition-transform"
@@ -442,22 +427,37 @@ export const CanvasViewport: React.FC = () => {
 
                       {/* Auto-Fit Toggle for Text */}
                       {(elem.type === 'text' || elem.type === 'dynamic-text') && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateElement(elem.id, { autoFit: elem.autoFit === false ? true : false });
-                          }}
-                          title="Toggle Auto-Fit Text to Box"
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
-                            elem.autoFit !== false
-                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
-                              : 'hover:bg-surface-800 text-surface-400'
-                          }`}
-                        >
-                          <Sparkles className="w-3 h-3 text-emerald-400" />
-                          <span>Auto-Fit {elem.autoFit !== false ? 'ON' : 'OFF'}</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateElement(elem.id, { autoFit: elem.autoFit === false ? true : false });
+                            }}
+                            title="Toggle Auto-Fit Text to Box"
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
+                              elem.autoFit !== false
+                                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
+                                : 'hover:bg-surface-800 text-surface-400'
+                            }`}
+                          >
+                            <Sparkles className="w-3 h-3 text-emerald-400" />
+                            <span>Auto-Fit {elem.autoFit !== false ? 'ON' : 'OFF'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addTextBoxBelow(elem.id);
+                            }}
+                            title="Add a new blank text box directly below this text"
+                            className="px-1.5 py-0.5 rounded bg-brand-600 hover:bg-brand-500 text-white flex items-center gap-1 text-[10px] font-semibold shadow-xs transition-colors"
+                          >
+                            <Plus className="w-3 h-3 text-white" />
+                            <span>+ Text Below</span>
+                          </button>
+                        </>
                       )}
 
                       {/* Full Width Fit */}
@@ -468,7 +468,7 @@ export const CanvasViewport: React.FC = () => {
                           const fullW = Number((doc.dimensions.width - 4).toFixed(2));
                           updateElement(elem.id, { x: 2, width: fullW });
                         }}
-                        title="Set Full Name Banner Width (50mm centered)"
+                        title="Set Full Name Banner Width (centered)"
                         className="px-1.5 py-0.5 rounded hover:bg-surface-800 text-surface-200 hover:text-white flex items-center gap-1 text-[10px] font-medium"
                       >
                         <Maximize2 className="w-3 h-3 text-indigo-400" />
@@ -534,285 +534,6 @@ export const CanvasViewport: React.FC = () => {
             );
           })}
       </div>
-
-      {/* Floating Right-Click Context Menu */}
-      {contextMenu && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="fixed z-[999] bg-surface-900/95 backdrop-blur-md text-white rounded-xl shadow-2xl border border-surface-700/80 p-1.5 min-w-[220px] text-xs font-medium animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            left: `${Math.min(contextMenu.x, window.innerWidth - 240)}px`,
-            top: `${Math.min(contextMenu.y, window.innerHeight - 340)}px`,
-          }}
-        >
-          {contextMenu.element ? (
-            <div className="space-y-1">
-              {/* Header */}
-              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-surface-400 border-b border-surface-800 flex items-center justify-between">
-                <span className="truncate max-w-[130px] text-surface-200">{contextMenu.element.name}</span>
-                <span className="text-[9px] uppercase tracking-wider font-mono text-brand-400 px-1.5 py-0.5 bg-brand-950/60 rounded">
-                  {contextMenu.element.type}
-                </span>
-              </div>
-
-              {/* Layer Ordering */}
-              <div className="py-1 space-y-0.5">
-                <button
-                  onClick={() => {
-                    reorderElement(contextMenu.element!.id, 'top');
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <ArrowUpToLine className="w-3.5 h-3.5 text-brand-400" />
-                  <span>Bring to Front</span>
-                </button>
-                <button
-                  onClick={() => {
-                    reorderElement(contextMenu.element!.id, 'up');
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <ArrowUp className="w-3.5 h-3.5 text-surface-400" />
-                  <span>Bring Forward</span>
-                </button>
-                <button
-                  onClick={() => {
-                    reorderElement(contextMenu.element!.id, 'down');
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <ArrowDown className="w-3.5 h-3.5 text-surface-400" />
-                  <span>Send Backward</span>
-                </button>
-                <button
-                  onClick={() => {
-                    reorderElement(contextMenu.element!.id, 'bottom');
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <ArrowDownToLine className="w-3.5 h-3.5 text-surface-400" />
-                  <span>Send to Back</span>
-                </button>
-              </div>
-
-              <div className="border-t border-surface-800 my-1" />
-
-              {/* Alignment */}
-              <div className="py-1 space-y-0.5">
-                <button
-                  onClick={() => {
-                    const centeredX = Math.max(0, Number(((doc.dimensions.width - contextMenu.element!.width) / 2).toFixed(2)));
-                    updateElement(contextMenu.element!.id, { x: centeredX });
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <AlignCenter className="w-3.5 h-3.5 text-surface-400" />
-                  <span>Center Horizontally</span>
-                </button>
-                <button
-                  onClick={() => {
-                    const centeredY = Math.max(0, Number(((doc.dimensions.height - contextMenu.element!.height) / 2).toFixed(2)));
-                    updateElement(contextMenu.element!.id, { y: centeredY });
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <AlignCenter className="w-3.5 h-3.5 text-surface-400 rotate-90" />
-                  <span>Center Vertically</span>
-                </button>
-              </div>
-
-              <div className="border-t border-surface-800 my-1" />
-
-              {/* Actions */}
-              <div className="py-1 space-y-0.5">
-                <button
-                  onClick={() => {
-                    duplicateElement(contextMenu.element!.id);
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  <Copy className="w-3.5 h-3.5 text-surface-400" />
-                  <span>Duplicate Element</span>
-                </button>
-                <button
-                  onClick={() => {
-                    updateElement(contextMenu.element!.id, { locked: !contextMenu.element!.locked });
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-                >
-                  {contextMenu.element.locked ? (
-                    <>
-                      <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Unlock Element</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-3.5 h-3.5 text-surface-400" />
-                      <span>Lock Element</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="border-t border-surface-800 my-1" />
-
-              {/* Delete */}
-              <button
-                onClick={() => {
-                  deleteElement(contextMenu.element!.id);
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors text-left"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                <span>Delete Element</span>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="px-2.5 py-1.5 text-[11px] font-semibold text-surface-400 border-b border-surface-800">
-                Quick Insert
-              </div>
-              <button
-                onClick={() => {
-                  addElement({
-                    type: 'dynamic-text',
-                    name: 'Roll No',
-                    content: 'Roll No- {{roll_no}}',
-                    fieldKey: 'roll_no',
-                    fallback: '141',
-                    fontSize: 4.8,
-                    fontWeight: 'bold',
-                    color: '#ffffff',
-                    width: 32,
-                    height: 5.5,
-                  });
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-brand-400" />
-                <span>Insert Roll Number</span>
-              </button>
-              <button
-                onClick={() => {
-                  addElement({
-                    type: 'dynamic-text',
-                    name: 'Student Name',
-                    content: '{{student_name}}',
-                    fieldKey: 'student_name',
-                    fallback: 'ABHISHEK KUMAR',
-                    fontSize: 6.8,
-                    fontWeight: 'bold',
-                    color: '#dc2626',
-                    width: 48,
-                    height: 6,
-                  });
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Insert Student Name</span>
-              </button>
-              <button
-                onClick={() => {
-                  addElement({
-                    type: 'text',
-                    name: 'Static Label',
-                    content: 'Label Text',
-                    fontSize: 4,
-                    width: 30,
-                    height: 5,
-                  });
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-              >
-                <Type className="w-3.5 h-3.5 text-surface-400" />
-                <span>Insert Static Text</span>
-              </button>
-              <button
-                onClick={() => {
-                  addElement({
-                    type: 'portrait',
-                    name: 'Candidate Photo',
-                    fieldKey: 'photo_url',
-                    width: 26,
-                    height: 32,
-                    borderRadius: 2,
-                  });
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
-                <span>Insert Student Photo</span>
-              </button>
-              <button
-                onClick={() => {
-                  addElement({
-                    type: 'qr-code',
-                    name: 'Verification QR',
-                    dataContent: '{{student_id}}',
-                    fieldKey: 'student_id',
-                    width: 18,
-                    height: 18,
-                    color: '#000000',
-                    backgroundColor: '#ffffff',
-                  });
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-800 text-surface-200 transition-colors text-left"
-              >
-                <QrCode className="w-3.5 h-3.5 text-amber-400" />
-                <span>Insert QR Code</span>
-              </button>
-
-              <div className="border-t border-surface-800 my-1" />
-
-              <div className="flex items-center gap-1 px-1">
-                <button
-                  onClick={() => {
-                    setZoom(Math.min(zoom + 0.25, 4));
-                    setContextMenu(null);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1 py-1 rounded hover:bg-surface-800 text-surface-300 text-[11px]"
-                >
-                  <ZoomIn className="w-3 h-3" /> Zoom In
-                </button>
-                <button
-                  onClick={() => {
-                    setZoom(Math.max(zoom - 0.25, 0.5));
-                    setContextMenu(null);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1 py-1 rounded hover:bg-surface-800 text-surface-300 text-[11px]"
-                >
-                  <ZoomOut className="w-3 h-3" /> Zoom Out
-                </button>
-                <button
-                  onClick={() => {
-                    setZoom(1.5);
-                    setContextMenu(null);
-                  }}
-                  className="p-1 rounded hover:bg-surface-800 text-surface-400"
-                  title="Reset Zoom"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
@@ -871,6 +592,7 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
       }
 
       const fontSizePx = mmToPx(effectiveFontSizeMm, dpi);
+      const lineHeightValue = elem.lineHeight || 1.25;
 
       const textShadowStyle = elem.textShadow
         ? `${mmToPx(elem.textShadow.offsetX, dpi)}px ${mmToPx(elem.textShadow.offsetY, dpi)}px ${mmToPx(elem.textShadow.blur, dpi)}px ${elem.textShadow.color}`
@@ -882,13 +604,24 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
 
       const vAlignClass = elem.verticalAlign === 'top' ? 'justify-start' : elem.verticalAlign === 'bottom' ? 'justify-end' : 'justify-center';
 
+      const boxWidthPx = mmToPx(elem.width, dpi);
+      // Use original configured font size (not auto-fitted) to determine single-line intent.
+      // This must match what calculateAutoFitFontSizeMm uses internally (baseFontSizeMm * 1.4).
+      const isSingleLine = elem.height < (elem.fontSize * 1.4) || elem.maxLines === 1;
+      const fontSpec = `${elem.fontStyle || 'normal'} ${
+        elem.fontWeight === 'bold' ? '700' : elem.fontWeight === 'semibold' ? '600' : elem.fontWeight === 'medium' ? '500' : '400'
+      } ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
+      const measureFn = createTextMeasureFn(fontSpec);
+      const wrappedLines = isSingleLine ? [rawText] : wrapTextToLines(rawText, boxWidthPx, measureFn);
+
       return (
         <div
-          className={`w-full h-full flex flex-col ${vAlignClass} leading-tight overflow-hidden break-words pointer-events-none`}
+          className={`w-full h-full flex flex-col ${vAlignClass} overflow-hidden pointer-events-none select-none`}
           style={{
             color: elem.color || '#000000',
             fontFamily: `"${elem.fontFamily || 'Inter'}", sans-serif`,
             fontSize: `${fontSizePx}px`,
+            lineHeight: lineHeightValue,
             fontWeight: elem.fontWeight === 'bold' ? 700 : elem.fontWeight === 'semibold' ? 600 : elem.fontWeight === 'medium' ? 500 : 400,
             fontStyle: elem.fontStyle || 'normal',
             textAlign: elem.textAlign || 'left',
@@ -897,8 +630,8 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
             WebkitTextStroke: strokeStyle,
           }}
         >
-          {rawText.split('\n').map((line, i) => (
-            <div key={i}>{line}</div>
+          {wrappedLines.map((line, i) => (
+            <div key={i} style={{ width: '100%', wordBreak: 'break-word' }}>{line || '\u00A0'}</div>
           ))}
         </div>
       );

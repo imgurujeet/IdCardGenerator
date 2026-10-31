@@ -538,24 +538,29 @@ export const FormsPage: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleQuickAddField({ key: 'pincode', label: 'PIN Code (Auto-Detect City & State)', type: 'india_pincode', placeholder: 'e.g. 803221' })}
-                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                      onClick={() => handleQuickAddField({
+                        key: 'address',
+                        label: 'Standard Address (Village/Ward, P.S., District, State)',
+                        type: 'india_address',
+                        placeholder: 'Village or Ward No.'
+                      })}
+                      className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-bold transition-colors shadow-2xs"
                     >
-                      + PIN Code (City & State)
+                      🏠 + Standard Option Address
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleQuickAddField({ key: 'address', label: 'Village / Street Address', type: 'text', placeholder: 'e.g. Vill+PO- Railli' })}
-                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
-                    >
-                      + Village / Address
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleQuickAddField({ key: 'police_station', label: 'Police Station (PS)', type: 'text', placeholder: 'e.g. NTPC, Barh' })}
+                      onClick={() => handleQuickAddField({ key: 'police_station', label: 'Police Station (P.S.)', type: 'text', placeholder: 'e.g. Barh' })}
                       className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
                     >
                       + Police Station
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddField({ key: 'pincode', label: 'PIN Code', type: 'india_pincode', placeholder: 'e.g. 803221' })}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 text-brand-900 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                    >
+                      + PIN Code
                     </button>
                     <button
                       type="button"
@@ -603,10 +608,10 @@ export const FormsPage: React.FC = () => {
                             const newType = e.target.value as FormFieldType;
                             const updates: Partial<FormFieldDefinition> = { type: newType };
                             if (newType === 'india_address') {
-                              if (!field.label || field.label.includes('Field')) updates.label = 'Complete Indian Address (API Auto-Detect)';
+                              if (!field.label || field.label.includes('Field')) updates.label = 'Card Address (Option-Based Village/Ward)';
                               if (!field.key || field.key.startsWith('field_')) updates.key = 'address';
                             } else if (newType === 'india_pincode') {
-                              if (!field.label || field.label.includes('Field')) updates.label = 'PIN Code (India Post API)';
+                              if (!field.label || field.label.includes('Field')) updates.label = 'PIN Code (6 Digits)';
                               if (!field.key || field.key.startsWith('field_')) updates.key = 'pincode';
                             } else if (newType === 'india_state') {
                               if (!field.label || field.label.includes('Field')) updates.label = 'State / UT';
@@ -628,8 +633,8 @@ export const FormsPage: React.FC = () => {
                           <option value="text">Single Line Text</option>
                           <option value="number">Number (Roll No, Reg No)</option>
                           <option value="select">Dropdown Select (Session, Blood Group)</option>
-                          <option value="india_address">India Address (State, District & PIN Code with API)</option>
-                          <option value="india_pincode">India PIN Code (API Auto-Detect)</option>
+                          <option value="india_address">🏠 Standard Option Address (Village/Ward, P.S., Dist & State)</option>
+                          <option value="india_pincode">PIN Code (6-digit)</option>
                           <option value="india_state">India State (Dropdown of 36 States/UTs)</option>
                           <option value="india_district">India District (Cascading with State)</option>
                           <option value="date">Date (D.O.B, Admission)</option>

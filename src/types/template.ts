@@ -64,6 +64,8 @@ export interface TextElement extends BaseElement {
   autoFit?: boolean;
   minFontSize?: number;          // mm
   maxFontSize?: number;          // mm
+  maxLines?: number;
+  dateFormat?: string;
 }
 
 export interface ImageElement extends BaseElement {

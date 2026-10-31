@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { CardLayout, TemplateDocument, TemplateElement } from '../../../types/template';
-import { interpolateString, mmToPx, resolveElementText, getRecordFieldValue, calculateAutoFitFontSizeMm } from '../../../lib/utils';
+import { interpolateString, mmToPx, resolveElementText, getRecordFieldValue, calculateAutoFitFontSizeMm, wrapTextToLines } from '../../../lib/utils';
+import { ensureFontAvailable } from '../../../lib/fontLoader';
 
 export interface RenderOptions {
   dpi?: number;                 // default 300 for print, 96 for screen
@@ -22,6 +23,37 @@ export async function renderCardToCanvas(
 
   const layout: CardLayout =
     side === 'back' && doc.layouts.back ? doc.layouts.back : doc.layouts.front;
+
+  // Preload and ensure all specific fonts and weights used in this layout are loaded
+  if (typeof document !== 'undefined') {
+    try {
+      const loadPromises: Promise<any>[] = [];
+      for (const elem of layout.elements) {
+        if (elem.type === 'text' || elem.type === 'dynamic-text') {
+          const family = elem.fontFamily || 'Inter';
+          loadPromises.push(ensureFontAvailable(family));
+          if (document.fonts && document.fonts.load) {
+            const weight =
+              elem.fontWeight === 'bold'
+                ? '700'
+                : elem.fontWeight === 'semibold'
+                ? '600'
+                : elem.fontWeight === 'medium'
+                ? '500'
+                : '400';
+            const style = elem.fontStyle === 'italic' ? 'italic' : 'normal';
+            loadPromises.push(document.fonts.load(`${style} ${weight} 16px "${family}"`));
+          }
+        }
+      }
+      await Promise.all(loadPromises);
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+    } catch {
+      // Font loading fallback
+    }
+  }
 
   const widthPx = Math.round(mmToPx(doc.dimensions.width, dpi));
   const heightPx = Math.round(mmToPx(doc.dimensions.height, dpi));
@@ -166,9 +198,15 @@ async function renderElement(
           ? '500'
           : '400';
 
+      // CRITICAL: Clip to bounding box so text never overflows, matching CSS overflow-hidden
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+
       ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
       ctx.fillStyle = elem.color || '#000000';
-      ctx.textBaseline = 'top';
+      ctx.textBaseline = 'middle';
 
       let textX = x;
       if (elem.textAlign === 'center') {
@@ -189,32 +227,55 @@ async function renderElement(
         ctx.shadowOffsetY = mmToPx(elem.textShadow.offsetY, dpi);
       }
 
-      // Handle multi-line and exact vertical alignment matching editor preview
-      const lines = rawText.split('\n');
-      const lineHeightPx = fontSizePx * (elem.lineHeight || 1.25);
+      // Use original configured font size (not auto-fitted) to determine single-line intent.
+      // This must match what calculateAutoFitFontSizeMm uses internally.
+      const isSingleLine = elem.height < (elem.fontSize * 1.4) || elem.maxLines === 1;
+
+      // For single-line text, measure width at target DPI and re-fit if needed
+      let lines: string[];
+      let activeFontPx = fontSizePx;
+      if (isSingleLine) {
+        lines = [rawText];
+        // If text exceeds box at this DPI, scale exactly to fit width without extra shrinkage
+        const measuredW = ctx.measureText(rawText).width;
+        if (measuredW > w && effectiveFontSizeMm > (elem.minFontSize || 2.0)) {
+          const scaleFactor = w / measuredW;
+          activeFontPx = fontSizePx * scaleFactor;
+          ctx.font = `${fontStyle} ${fontWeight} ${activeFontPx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
+        }
+      } else {
+        lines = wrapTextToLines(rawText, w, (lineStr) => ctx.measureText(lineStr).width);
+      }
+
+      const lineHeightPx = activeFontPx * (elem.lineHeight || 1.25);
       const totalBlockHeightPx = lines.length * lineHeightPx;
 
-      let startY = y;
+      // Calculate the vertical block starting top to match CSS flexbox alignment:
+      // - 'top': y
+      // - 'bottom': y + h - totalBlockHeightPx
+      // - 'middle': y + (h - totalBlockHeightPx) / 2
+      let blockTop: number;
       if (elem.verticalAlign === 'top') {
-        startY = y;
+        blockTop = y;
       } else if (elem.verticalAlign === 'bottom') {
-        startY = y + Math.max(0, h - totalBlockHeightPx);
+        blockTop = y + h - totalBlockHeightPx;
       } else {
-        // default: middle / center (exactly matching flex justify-center in CanvasViewport)
-        startY = y + Math.max(0, (h - totalBlockHeightPx) / 2);
+        // middle / center (default)
+        blockTop = y + (h - totalBlockHeightPx) / 2;
       }
 
       lines.forEach((line, idx) => {
-        const lineY = startY + idx * lineHeightPx;
+        // Center of this line's box in Canvas, matching CSS line-box vertical centering
+        const lineCenterY = blockTop + idx * lineHeightPx + lineHeightPx / 2;
 
         // Draw text stroke if configured
         if (elem.textStrokeColor && elem.textStrokeWidth) {
           ctx.strokeStyle = elem.textStrokeColor;
           ctx.lineWidth = mmToPx(elem.textStrokeWidth, dpi);
-          ctx.strokeText(line, textX, lineY);
+          ctx.strokeText(line, textX, lineCenterY);
         }
 
-        ctx.fillText(line, textX, lineY);
+        ctx.fillText(line, textX, lineCenterY);
 
         // Draw Underline if enabled
         if (elem.underline) {
@@ -226,15 +287,16 @@ async function renderElement(
           } else if (elem.textAlign === 'right') {
             lineStartX = textX - textW;
           }
-          const underlineY = lineY + fontSizePx * 1.05;
+          const underlineY = lineCenterY + activeFontPx * 0.42;
           ctx.beginPath();
           ctx.strokeStyle = elem.color || '#000000';
-          ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+          ctx.lineWidth = Math.max(1, activeFontPx * 0.08);
           ctx.moveTo(lineStartX, underlineY);
           ctx.lineTo(lineStartX + textW, underlineY);
           ctx.stroke();
         }
       });
+      ctx.restore(); // Restore from clip
       break;
     }
 
@@ -272,9 +334,11 @@ async function renderElement(
           drawImageProp(ctx, img, x, y, w, h, elem.objectFit === 'contain' ? 'contain' : 'cover');
           ctx.restore();
 
-          if (elem.borderColor && elem.borderWidth) {
-            ctx.strokeStyle = elem.borderColor;
-            ctx.lineWidth = mmToPx(elem.borderWidth, dpi);
+          const effectiveBorderWidth = elem.borderWidth ?? (elem as any).strokeWidth;
+          const effectiveBorderColor = elem.borderColor ?? (elem as any).strokeColor ?? '#000000';
+          if (effectiveBorderWidth) {
+            ctx.strokeStyle = effectiveBorderColor;
+            ctx.lineWidth = mmToPx(effectiveBorderWidth, dpi);
             if (radius > 0 && ctx.roundRect) {
               ctx.beginPath();
               ctx.roundRect(x, y, w, h, radius);
@@ -351,9 +415,22 @@ async function renderElement(
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    const isDataOrBlob = src.startsWith('data:') || src.startsWith('blob:');
+    if (!isDataOrBlob) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
+    img.onerror = () => {
+      // Fallback: If anonymous CORS loading failed for an external URL, retry without crossOrigin
+      if (img.crossOrigin) {
+        const fallback = new Image();
+        fallback.onload = () => resolve(fallback);
+        fallback.onerror = (e) => reject(e);
+        fallback.src = src;
+      } else {
+        reject(new Error(`Failed to load image from source: ${src.slice(0, 60)}`));
+      }
+    };
     img.src = src;
   });
 }

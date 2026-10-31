@@ -51,6 +51,8 @@ export const TextElementSchema = BaseElementSchema.extend({
   autoFit: z.boolean().optional(),
   minFontSize: z.number().positive().optional(),
   maxFontSize: z.number().positive().optional(),
+  maxLines: z.number().int().positive().optional(),
+  dateFormat: z.string().optional(),
 });
 
 export const ImageElementSchema = BaseElementSchema.extend({

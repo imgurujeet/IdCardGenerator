@@ -22,6 +22,7 @@ import {
   Palette,
   FileUp,
   FileCheck2,
+  ArrowDown,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { storageService } from '../../../services/storage.service';
@@ -40,6 +41,7 @@ export const ElementsSidebar: React.FC = () => {
     activeSide,
     selectedElementId,
     addElement,
+    addTextBoxBelow,
     setSelectedElementId,
     updateElement,
     deleteElement,
@@ -203,6 +205,42 @@ export const ElementsSidebar: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Custom & Blank Text Box */}
+          <div className="bg-brand-50/50 border border-brand-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-brand-900 flex items-center gap-1.5">
+                <Type className="w-3.5 h-3.5 text-brand-600" />
+                <span>Blank & Custom Text</span>
+              </span>
+              <span className="text-[10px] font-semibold text-brand-700 bg-white px-1.5 py-0.5 rounded border border-brand-200">
+                Static / Custom
+              </span>
+            </div>
+            <p className="text-[11px] text-surface-600 leading-tight">
+              Add a blank text box anywhere, or position directly below any existing text on the card.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => addTextBoxBelow()}
+                className="flex items-center justify-center gap-1.5 p-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-colors shadow-2xs"
+                title="Add a new blank text box to the canvas"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Blank Text</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => addTextBoxBelow(selectedElementId || undefined)}
+                className="flex items-center justify-center gap-1.5 p-2 rounded-lg bg-white hover:bg-brand-50 border border-brand-300 text-brand-700 font-semibold text-xs transition-colors shadow-2xs"
+                title="Add blank text box directly below selected element"
+              >
+                <ArrowDown className="w-3.5 h-3.5 text-brand-600" />
+                <span>+ Text Below</span>
+              </button>
+            </div>
+          </div>
 
           {/* Dynamic Data Fields */}
           <div>

@@ -9,6 +9,9 @@ import {
   Home,
   Camera,
   Crop,
+  RefreshCw,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
 import { templateService } from '../../services/template.service';
@@ -17,10 +20,10 @@ import { TemplateDocument } from '../../types/template';
 import { FormEntity } from '../../types/database';
 import { storageService, UploadImageResult } from '../../services/storage.service';
 import {
-  lookupIndiaPincode,
   getIndianStates,
   getDistrictsForState,
 } from '../../services/indiaLocation.service';
+import { formatStructuredAddress, toCleanTitleCase, formatDateCustom } from '../../lib/utils';
 import { PassportPhotoCaptureModal } from './components/PassportPhotoCaptureModal';
 import { SubmittedCardPreview } from './components/SubmittedCardPreview';
 
@@ -37,12 +40,139 @@ export const PublicFormPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
 
-  // India Location & PIN Code state
+  // Unique user & update-by-mobile support
+  const [existingSubmissionId, setExistingSubmissionId] = useState<string | null>(null);
+  const [isUpdateMode, setIsUpdateMode] = useState<boolean>(false);
+  const [isCheckingPhone, setIsCheckingPhone] = useState<boolean>(false);
+  const [autoFetchNotice, setAutoFetchNotice] = useState<string | null>(null);
+  const [wasUpdated, setWasUpdated] = useState<boolean>(false);
+  const [lookupPhoneInput, setLookupPhoneInput] = useState<string>('');
+  const [showLookupBox, setShowLookupBox] = useState<boolean>(false);
+
+  // Standard Indian Location State (Option & Cascading based)
   const allIndianStates = getIndianStates();
+  const [addressType, setAddressType] = useState<'village' | 'ward' | 'street' | 'at'>('village');
+  const [villageName, setVillageName] = useState<string>('');
+  const [policeStation, setPoliceStation] = useState<string>('');
+  const [postOffice, setPostOffice] = useState<string>('');
+  const [poSameAsPs, setPoSameAsPs] = useState<boolean>(true);
+  const [city, setCity] = useState<string>('');
   const [selectedState, setSelectedState] = useState<string>('Bihar');
-  const [addressMode, setAddressMode] = useState<'pincode' | 'manual'>('pincode');
-  const [pincodeLoading, setPincodeLoading] = useState(false);
-  const [pincodeVerified, setPincodeVerified] = useState<string | null>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('Patna');
+  const [pincode, setPincode] = useState<string>('');
+
+  const syncStructuredAddress = (
+    type: 'village' | 'ward' | 'street' | 'at',
+    vill: string,
+    ps: string,
+    po: string,
+    samePoPs: boolean,
+    c: string,
+    st: string,
+    dist: string,
+    pin: string
+  ) => {
+    const effectivePo = samePoPs ? ps : po;
+    const formatted = formatStructuredAddress({
+      address_type: type,
+      village_name: vill,
+      police_station: ps,
+      post_office: effectivePo,
+      po_same_as_ps: samePoPs,
+      city: c,
+      district: dist,
+      state: st,
+      pincode: pin,
+    });
+
+    setFormData((prev) => ({
+      ...prev,
+      address_type: type,
+      village_name: vill,
+      village_ward: formatted.villageWard,
+      address: formatted.villageWard,
+      police_station: ps,
+      post_office: effectivePo,
+      po_same_as_ps: samePoPs,
+      po_ps: formatted.poPs,
+      city: c || dist,
+      district: dist,
+      state: st,
+      pincode: pin,
+      district_pin: formatted.districtPin,
+      full_address: formatted.fullAddress,
+    }));
+  };
+
+  // Auto-fetch existing details by 10-digit mobile number
+  const handleAutoFetchByPhone = async (phoneToLookup: string) => {
+    if (!form || !phoneToLookup) return;
+    const cleanDigits = phoneToLookup.replace(/\D/g, '').slice(-10);
+    if (cleanDigits.length < 10) return;
+
+    try {
+      setIsCheckingPhone(true);
+      const existing = await formService.findSubmissionByMobile(form.id, cleanDigits, form.public_slug);
+      if (existing && existing.data) {
+        setExistingSubmissionId(existing.id);
+        setIsUpdateMode(true);
+        setFormData(existing.data);
+
+        // Pre-fill location components
+        const d = existing.data;
+        const addrType = d.address_type || 'village';
+        const vName = d.village_name || d.village || d.village_ward || '';
+        const ps = d.police_station || d.ps || '';
+        const po = d.post_office || d.po || '';
+        const samePoPs = d.po_same_as_ps !== undefined
+          ? Boolean(d.po_same_as_ps)
+          : Boolean(po && ps && po.toLowerCase() === ps.toLowerCase());
+        const c = d.city || '';
+        const st = d.state || 'Bihar';
+        const dist = d.district || 'Patna';
+        const pin = d.pincode || d.pin || '';
+
+        setAddressType(addrType as any);
+        setVillageName(vName);
+        setPoliceStation(ps);
+        setPostOffice(po);
+        setPoSameAsPs(samePoPs);
+        setCity(c);
+        setSelectedState(st);
+        setSelectedDistrict(dist);
+        setPincode(pin);
+
+        if (d.photo_url || d.photo) {
+          setPhotoPreview(d.photo_url || d.photo);
+        }
+
+        const name = d.student_name || d.candidate_name || d.full_name || 'Student';
+        setAutoFetchNotice(`✓ Registration found for +91 ${cleanDigits} (${name})! Previous details have been loaded.`);
+        setShowLookupBox(false);
+      } else {
+        setAutoFetchNotice(`No previous registration found for +91 ${cleanDigits}. Proceeding with new submission.`);
+        setTimeout(() => setAutoFetchNotice(null), 4000);
+      }
+    } catch (err) {
+      console.warn('Auto fetch by phone warning:', err);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  };
+
+  const handleClearUpdateMode = () => {
+    setExistingSubmissionId(null);
+    setIsUpdateMode(false);
+    setAutoFetchNotice(null);
+    setFormData({});
+    setPhotoPreview(null);
+    setVillageName('');
+    setPoliceStation('');
+    setPostOffice('');
+    setPoSameAsPs(true);
+    setCity('');
+    setPincode('');
+  };
 
   useEffect(() => {
     async function loadForm() {
@@ -80,6 +210,18 @@ export const PublicFormPage: React.FC = () => {
 
   const handleInputChange = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
+
+    // If entering a phone/mobile field, auto-fetch previous details if 10 digits are typed
+    const lowerKey = key.toLowerCase();
+    if (
+      (lowerKey.includes('mobile') || lowerKey.includes('phone') || lowerKey.includes('contact')) &&
+      typeof value === 'string'
+    ) {
+      const cleanDigits = value.replace(/\D/g, '').slice(-10);
+      if (cleanDigits.length === 10 && !isUpdateMode) {
+        handleAutoFetchByPhone(cleanDigits);
+      }
+    }
   };
 
   const handleStateSelect = (stateName: string, stateKey: string = 'state') => {
@@ -88,33 +230,6 @@ export const PublicFormPage: React.FC = () => {
     const validDistricts = getDistrictsForState(stateName);
     if (formData.district && !validDistricts.includes(formData.district)) {
       handleInputChange('district', '');
-    }
-  };
-
-  const handlePincodeChange = async (key: string, pin: string) => {
-    handleInputChange(key, pin);
-    const cleanPin = pin.replace(/\D/g, '');
-    if (cleanPin.length === 6) {
-      setPincodeLoading(true);
-      const res = await lookupIndiaPincode(cleanPin);
-      setPincodeLoading(false);
-      if (res.success && res.state && res.district) {
-        setPincodeVerified(`${res.district}, ${res.state}`);
-        setSelectedState(res.state);
-        // User request: ONLY fetch city and state from PIN code. Rest user writes their own address and police station.
-        setFormData((prev) => ({
-          ...prev,
-          [key]: cleanPin,
-          pincode: cleanPin,
-          district: res.district,
-          city: res.district,
-          state: res.state,
-        }));
-      } else {
-        setPincodeVerified(null);
-      }
-    } else {
-      setPincodeVerified(null);
     }
   };
 
@@ -152,9 +267,31 @@ export const PublicFormPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      const res = await formService.submitPublicResponse(slug, formData);
+      // Normalize dates to DD-MM-YYYY so they store cleanly and match ID card standards
+      const finalSubmission = { ...formData };
+      if (form.fields_schema) {
+        for (const f of form.fields_schema) {
+          if (f.type === 'date' && finalSubmission[f.key]) {
+            finalSubmission[f.key] = formatDateCustom(finalSubmission[f.key], 'DD-MM-YYYY');
+          }
+          // Default blood group to 'NA' if unselected so it never shows blank
+          if (f.key === 'blood_group' || f.label.toLowerCase().includes('blood')) {
+            if (!finalSubmission[f.key] || String(finalSubmission[f.key]).trim() === '') {
+              finalSubmission[f.key] = 'NA';
+            }
+          }
+        }
+      }
+      if (!finalSubmission['blood_group'] || String(finalSubmission['blood_group']).trim() === '') {
+        finalSubmission['blood_group'] = 'NA';
+      }
+      const res = await formService.submitPublicResponse(slug, finalSubmission, {
+        existingSubmissionId: existingSubmissionId || undefined,
+        allowUpdate: true,
+      });
       if (res.success && res.submissionId) {
         setSubmittedId(res.submissionId);
+        setWasUpdated(Boolean(res.isUpdate));
       } else {
         alert(res.error || 'Failed to submit form.');
       }
@@ -197,11 +334,21 @@ export const PublicFormPage: React.FC = () => {
         formTitle={form.title}
         templateDoc={templateDoc}
         formData={{ ...formData, photo_url: photoPreview || formData['photo_url'] }}
+        isUpdate={wasUpdated}
         onReset={() => {
           setSubmittedId(null);
+          setExistingSubmissionId(null);
+          setIsUpdateMode(false);
+          setWasUpdated(false);
+          setAutoFetchNotice(null);
           setFormData({});
           setPhotoPreview(null);
-          setPincodeVerified(null);
+          setVillageName('');
+          setPoliceStation('');
+          setPostOffice('');
+          setPoSameAsPs(true);
+          setCity('');
+          setPincode('');
         }}
       />
     );
@@ -239,8 +386,364 @@ export const PublicFormPage: React.FC = () => {
 
           {/* Form Body */}
           <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
-            {form.fields_schema.map((field: any) => {
-              const isRequired = Boolean(field.validation?.required ?? field.required);
+            {/* Returning Student Auto-Fetch & Update Mode Banner */}
+            {isUpdateMode ? (
+              <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-950 gap-3 shadow-2xs">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-blue-900">Update Mode Active</span>
+                      <span className="text-[10px] bg-blue-200/80 text-blue-800 px-1.5 py-0.2 rounded font-semibold">
+                        Existing Registration
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-700 mt-0.5">
+                      {autoFetchNotice || 'Previous details loaded. You can update any fields below and save changes.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearUpdateMode}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-blue-800 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg shadow-2xs transition-colors shrink-0"
+                >
+                  Start New
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-brand-50/60 border border-brand-200 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-brand-900 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                    <span>Already submitted? Update previous details</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowLookupBox(!showLookupBox)}
+                    className="text-[11px] font-semibold text-brand-700 hover:text-brand-800 bg-white hover:bg-brand-50 px-2.5 py-1 rounded-lg border border-brand-200 shadow-2xs transition-colors"
+                  >
+                    {showLookupBox ? 'Hide Lookup' : 'Find by Mobile Number'}
+                  </button>
+                </div>
+                {showLookupBox && (
+                  <div className="pt-2 border-t border-brand-200/60 flex items-center gap-2">
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      placeholder="Enter 10-digit registered mobile number"
+                      value={lookupPhoneInput}
+                      onChange={(e) => setLookupPhoneInput(e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-3 py-1.5 bg-white border border-brand-300 rounded-lg text-xs outline-none focus:border-brand-500 font-mono shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      disabled={lookupPhoneInput.length < 10 || isCheckingPhone}
+                      onClick={() => handleAutoFetchByPhone(lookupPhoneInput)}
+                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 flex items-center gap-1 transition-colors"
+                    >
+                      {isCheckingPhone ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                      <span>Fetch Details</span>
+                    </button>
+                  </div>
+                )}
+                {autoFetchNotice && !isUpdateMode && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 font-medium">
+                    {autoFetchNotice}
+                  </p>
+                )}
+              </div>
+            )}
+            {(() => {
+              const hasAddressField = form.fields_schema.some(
+                (f: any) =>
+                  f.type === 'india_address' ||
+                  f.key === 'address' ||
+                  f.key === 'village_ward' ||
+                  f.key === 'village_name'
+              );
+              let addressBlockRendered = false;
+
+              return form.fields_schema.map((field: any) => {
+                const isRequired = Boolean(field.validation?.required ?? field.required);
+
+                {/* Option-Based Standardized Address Component */}
+                if (
+                  field.type === 'india_address' ||
+                  field.key === 'address' ||
+                  field.key === 'village_ward' ||
+                  field.key === 'village_name'
+                ) {
+                  if (addressBlockRendered) return null;
+                  addressBlockRendered = true;
+
+                  const currentDists = getDistrictsForState(selectedState);
+
+                  return (
+                    <div key={field.id} className="p-4 bg-brand-50/50 rounded-2xl border border-brand-200 space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-brand-100 pb-2">
+                        <div>
+                          <label className="text-xs font-bold text-brand-950 flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4 text-brand-600" />
+                            <span>Card Address Details {isRequired && <span className="text-red-500">*</span>}</span>
+                          </label>
+                          <p className="text-[10px] text-surface-500 mt-0.5">
+                            Select options below for clean, error-free formatting on your ID card.
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-brand-700 bg-brand-100/70 px-2 py-0.5 rounded font-semibold font-mono">
+                          Option-Based Format
+                        </span>
+                      </div>
+
+                      {/* 1. Address Type Selection */}
+                      <div>
+                        <label className="text-[11px] font-semibold text-surface-700 block mb-1.5">
+                          1. Select Address Type (Village or Ward):
+                        </label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[
+                            { id: 'village', label: 'Village (Vill)', prefix: 'Vill-' },
+                            { id: 'ward', label: 'Ward No.', prefix: 'Ward No.-' },
+                            { id: 'street', label: 'Mohalla / St.', prefix: 'Mohalla-' },
+                            { id: 'at', label: 'At / Area', prefix: 'At-' },
+                          ].map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                const newType = item.id as any;
+                                setAddressType(newType);
+                                syncStructuredAddress(newType, villageName, policeStation, postOffice, poSameAsPs, city, selectedState, selectedDistrict, pincode);
+                              }}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
+                                addressType === item.id
+                                  ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                                  : 'bg-white text-surface-700 border-surface-300 hover:border-brand-400'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 2. Village Name or Ward Number */}
+                      <div>
+                        <label className="text-[11px] font-semibold text-surface-700 block mb-1">
+                          {addressType === 'ward'
+                            ? '2. Ward Number (Number Only)'
+                            : addressType === 'street'
+                            ? '2. Street / Mohalla Name'
+                            : addressType === 'at'
+                            ? '2. Location / At Name'
+                            : '2. Village Name (Write Name Only)'}
+                        </label>
+                        <input
+                          type="text"
+                          required={isRequired}
+                          placeholder={
+                            addressType === 'ward'
+                              ? 'e.g. 04 (or Ward 4)'
+                              : addressType === 'street'
+                              ? 'e.g. Station Road'
+                              : 'e.g. Rampur (no need to type Vill)'
+                          }
+                          value={villageName}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setVillageName(val);
+                            syncStructuredAddress(addressType, val, policeStation, postOffice, poSameAsPs, city, selectedState, selectedDistrict, pincode);
+                          }}
+                          className="w-full px-3 py-2 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 outline-none focus:border-brand-500 font-medium shadow-2xs"
+                        />
+                      </div>
+
+                      {/* 3. Police Station (PS) & Post Office (PO) with "Same as PS" Option */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-semibold text-surface-700">
+                            3. Police Station (PS) & Post Office (PO)
+                          </label>
+                          <label className="flex items-center gap-1.5 text-[11px] text-brand-700 font-semibold cursor-pointer select-none bg-brand-100/70 hover:bg-brand-100 px-2 py-0.5 rounded border border-brand-200 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={poSameAsPs}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPoSameAsPs(checked);
+                                const effectivePo = checked ? policeStation : postOffice;
+                                syncStructuredAddress(addressType, villageName, policeStation, effectivePo, checked, city, selectedState, selectedDistrict, pincode);
+                              }}
+                              className="rounded text-brand-600 cursor-pointer"
+                            />
+                            <span>PO & PS are same (PO+PS-)</span>
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="text-[10px] text-surface-500 block mb-0.5">Police Station (PS)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Barh"
+                              value={policeStation}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPoliceStation(val);
+                                const effectivePo = poSameAsPs ? val : postOffice;
+                                if (poSameAsPs) setPostOffice(val);
+                                syncStructuredAddress(addressType, villageName, val, effectivePo, poSameAsPs, city, selectedState, selectedDistrict, pincode);
+                              }}
+                              className="w-full px-3 py-2 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 outline-none focus:border-brand-500 font-medium shadow-2xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-surface-500 block mb-0.5">Post Office (PO)</label>
+                            <input
+                              type="text"
+                              placeholder={poSameAsPs ? policeStation || 'Same as Police Station' : 'e.g. Barh'}
+                              value={poSameAsPs ? policeStation : postOffice}
+                              disabled={poSameAsPs}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPostOffice(val);
+                                syncStructuredAddress(addressType, villageName, policeStation, val, false, city, selectedState, selectedDistrict, pincode);
+                              }}
+                              className={`w-full px-3 py-2 border rounded-lg text-xs font-medium shadow-2xs outline-none ${
+                                poSameAsPs
+                                  ? 'bg-brand-50/70 border-brand-200 text-brand-800 cursor-not-allowed'
+                                  : 'bg-white border-brand-300 text-surface-900 focus:border-brand-500'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. City, State, District & PIN Code */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-semibold text-surface-700 block mb-1">
+                            4. City / Town
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Patna"
+                            value={city}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCity(val);
+                              syncStructuredAddress(addressType, villageName, policeStation, postOffice, poSameAsPs, val, selectedState, selectedDistrict, pincode);
+                            }}
+                            className="w-full px-2.5 py-2 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 font-medium outline-none focus:border-brand-500 shadow-2xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-surface-700 block mb-1">
+                            5. State / UT
+                          </label>
+                          <select
+                            value={selectedState}
+                            onChange={(e) => {
+                              const newSt = e.target.value;
+                              setSelectedState(newSt);
+                              const dists = getDistrictsForState(newSt);
+                              const firstDist = dists[0] || '';
+                              setSelectedDistrict(firstDist);
+                              syncStructuredAddress(addressType, villageName, policeStation, postOffice, poSameAsPs, city, newSt, firstDist, pincode);
+                            }}
+                            className="w-full px-2.5 py-2 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 font-medium outline-none focus:border-brand-500"
+                          >
+                            {allIndianStates.map((st) => (
+                              <option key={st} value={st}>
+                                {st}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-surface-700 block mb-1">
+                            6. District (Choose)
+                          </label>
+                          <select
+                            value={selectedDistrict}
+                            onChange={(e) => {
+                              const newDist = e.target.value;
+                              setSelectedDistrict(newDist);
+                              syncStructuredAddress(addressType, villageName, policeStation, postOffice, poSameAsPs, city, selectedState, newDist, pincode);
+                            }}
+                            className="w-full px-2.5 py-2 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 font-medium outline-none focus:border-brand-500"
+                          >
+                            {currentDists.map((dst) => (
+                              <option key={dst} value={dst}>
+                                {dst}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-surface-700 block mb-1">
+                            7. PIN Code (6 Digits)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            placeholder="e.g. 803213"
+                            value={pincode}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              setPincode(val);
+                              syncStructuredAddress(addressType, villageName, policeStation, postOffice, poSameAsPs, city, selectedState, selectedDistrict, val);
+                            }}
+                            className="w-full px-2.5 py-2 border border-brand-300 rounded-lg text-xs font-mono font-bold bg-white text-surface-900 outline-none focus:border-brand-500 text-center tracking-widest shadow-2xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 5. Live ID Card Print Alignment Preview */}
+                      <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-emerald-900 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Card Output Format Preview:</span>
+                          </span>
+                          <span className="text-[10px] bg-emerald-200/80 text-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                            Auto-Formatted
+                          </span>
+                        </div>
+                        <div className="font-mono text-xs text-emerald-900 font-semibold bg-white/90 p-2 rounded border border-emerald-200/60 break-words">
+                          {formData.full_address || 'Vill- Akbarpur, PO+PS- Barh, Dist- Patna (Bihar) - 803213'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // If unified address block is already capturing address, skip redundant individual sub-fields
+                if (
+                  hasAddressField &&
+                  [
+                    'police_station',
+                    'post_office',
+                    'po',
+                    'ps',
+                    'city',
+                    'town',
+                    'district',
+                    'state',
+                    'pincode',
+                    'pin',
+                    'ward_no',
+                    'address_type',
+                    'po_same_as_ps',
+                  ].includes(field.key)
+                ) {
+                  return null;
+                }
 
               if (field.type === 'image_upload') {
                 return (
@@ -478,177 +981,31 @@ export const PublicFormPage: React.FC = () => {
                         </select>
                       </div>
                     </div>
-
-                    {/* PIN Code Quick Auto-Detect Helper */}
-                    <div className="pt-2 border-t border-brand-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                      <span className="text-[11px] text-surface-500 font-medium flex items-center gap-1">
-                        ⚡ Or enter PIN to auto-detect both:
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          maxLength={6}
-                          placeholder="e.g. 803221"
-                          value={formData.pincode || ''}
-                          onChange={(e) => handlePincodeChange('pincode', e.target.value)}
-                          className="w-28 px-2 py-1 border border-brand-300 rounded text-xs font-mono font-bold bg-white outline-none focus:border-brand-500 text-center"
-                        />
-                        {pincodeLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />}
-                        {pincodeVerified && (
-                          <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 truncate">
-                            ✓ {pincodeVerified}
-                          </span>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 );
               }
 
-              {/* India PIN Code or Full Smart Location (Dual Mode: PIN Auto-Detect OR State->District Cascading) */}
-              if (field.type === 'india_pincode' || field.type === 'india_address') {
-                const activeState = formData.state || selectedState;
-                const stateDistricts = getDistrictsForState(activeState);
-
+              {/* Single PIN Code Field (when not part of a full address block) */}
+              if (field.type === 'india_pincode' || field.key === 'pincode') {
+                if (hasAddressField) return null;
                 return (
-                  <div key={field.id} className="p-4 bg-brand-50/50 rounded-2xl border border-brand-200 space-y-3">
-                    {/* Header with Dual Mode Switcher */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-100 pb-2.5">
-                      <div>
-                        <label className="text-xs font-bold text-brand-950 flex items-center gap-1.5">
-                          <MapPin className="w-4 h-4 text-brand-600" />
-                          <span>{field.label} {isRequired && <span className="text-red-500">*</span>}</span>
-                        </label>
-                        <p className="text-[10px] text-surface-500 mt-0.5">
-                          Auto-detect via India Post API or choose State & District dropdowns.
-                        </p>
-                      </div>
-
-                      {/* Mode Toggle Buttons */}
-                      <div className="flex items-center bg-white p-0.5 rounded-lg border border-brand-200 text-[11px] font-semibold shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setAddressMode('pincode')}
-                          className={`px-2.5 py-1 rounded-md transition-colors ${
-                            addressMode === 'pincode'
-                              ? 'bg-brand-600 text-white shadow-xs'
-                              : 'text-surface-600 hover:text-surface-900'
-                          }`}
-                        >
-                          ⚡ Auto-Detect (PIN)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAddressMode('manual')}
-                          className={`px-2.5 py-1 rounded-md transition-colors ${
-                            addressMode === 'manual'
-                              ? 'bg-brand-600 text-white shadow-xs'
-                              : 'text-surface-600 hover:text-surface-900'
-                          }`}
-                        >
-                          🗺️ State & District
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Mode A: PIN Code Auto-Detect */}
-                    {addressMode === 'pincode' ? (
-                      <div className="space-y-2.5">
-                        <div>
-                          <label className="text-[11px] font-semibold text-brand-900 block mb-1">
-                            Enter 6-Digit Indian Postal PIN Code
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              maxLength={6}
-                              required={isRequired}
-                              placeholder="e.g. 803221 or 110001 or 221005"
-                              value={formData[field.key] || formData.pincode || ''}
-                              onChange={(e) => handlePincodeChange(field.key, e.target.value)}
-                              className="w-full px-3 py-2 border border-brand-300 rounded-lg text-xs font-mono font-bold bg-white text-surface-900 focus:border-brand-500 outline-none pr-8 tracking-widest shadow-2xs"
-                            />
-                            {pincodeLoading && (
-                              <Loader2 className="w-4 h-4 animate-spin text-brand-600 absolute right-2.5 top-2.5" />
-                            )}
-                          </div>
-                        </div>
-
-                        {pincodeVerified && (
-                          <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 space-y-1 text-xs text-emerald-900">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 font-medium">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                <span>Auto-Fetched: <strong>{pincodeVerified}</strong></span>
-                              </div>
-                              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">
-                                City & State Verified
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-emerald-700">
-                              City & State filled automatically. Please enter your village/street address and police station in their respective fields below.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      /* Mode B: State & District Cascading Dropdowns */
-                      <div className="space-y-2.5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {/* State Dropdown */}
-                          <div>
-                            <label className="text-[11px] font-semibold text-surface-700 block mb-1">
-                              State / Union Territory
-                            </label>
-                            <select
-                              value={formData.state || selectedState}
-                              onChange={(e) => handleStateSelect(e.target.value)}
-                              className="w-full px-2.5 py-1.5 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 font-medium outline-none focus:border-brand-500"
-                            >
-                              {allIndianStates.map((st) => (
-                                <option key={st} value={st}>
-                                  {st}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {/* District Dropdown */}
-                          <div>
-                            <label className="text-[11px] font-semibold text-surface-700 block mb-1">
-                              District in {formData.state || selectedState}
-                            </label>
-                            <select
-                              value={formData.district || ''}
-                              onChange={(e) => handleInputChange('district', e.target.value)}
-                              className="w-full px-2.5 py-1.5 border border-brand-300 rounded-lg text-xs bg-white text-surface-900 font-medium outline-none focus:border-brand-500"
-                            >
-                              <option value="">-- Choose District --</option>
-                              {stateDistricts.map((dst) => (
-                                <option key={dst} value={dst}>
-                                  {dst}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* PIN Code Optional Manual Input */}
-                        <div>
-                          <label className="text-[11px] font-semibold text-surface-700 block mb-1">
-                            PIN Code (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            maxLength={6}
-                            placeholder="6-Digit PIN Code"
-                            value={formData[field.key] || formData.pincode || ''}
-                            onChange={(e) => handleInputChange(field.key, e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-brand-300 rounded-lg text-xs font-mono bg-white outline-none focus:border-brand-500"
-                          />
-                        </div>
-                      </div>
-                    )}
+                  <div key={field.id}>
+                    <label className="text-xs font-semibold text-surface-800 block mb-1">
+                      {field.label} {isRequired && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required={isRequired}
+                      placeholder="6-Digit PIN Code (e.g. 803221)"
+                      value={formData[field.key] || formData.pincode || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        handleInputChange(field.key, val);
+                        handleInputChange('pincode', val);
+                      }}
+                      className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs font-mono font-bold bg-white text-surface-900 focus:border-brand-500 outline-none"
+                    />
                   </div>
                 );
               }
@@ -675,15 +1032,24 @@ export const PublicFormPage: React.FC = () => {
               }
 
               if (field.type === 'date') {
+                const currentVal = formData[field.key] || '';
+                const previewDate = currentVal ? formatDateCustom(currentVal, 'DD-MM-YYYY') : '';
                 return (
                   <div key={field.id}>
-                    <label className="text-xs font-semibold text-surface-800 block mb-1">
-                      {field.label} {isRequired && <span className="text-red-500">*</span>}
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-surface-800">
+                        {field.label} {isRequired && <span className="text-red-500">*</span>}
+                      </label>
+                      {previewDate && (
+                        <span className="text-[11px] font-mono font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-200">
+                          ID Card Format: {previewDate}
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="date"
                       required={isRequired}
-                      value={formData[field.key] || ''}
+                      value={currentVal}
                       onChange={(e) => handleInputChange(field.key, e.target.value)}
                       className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none"
                     />
@@ -715,17 +1081,173 @@ export const PublicFormPage: React.FC = () => {
                 );
               }
 
+              {/* Smart Choice: Blood Group Dropdown / Grid */}
+              if (field.key === 'blood_group' || field.label.toLowerCase().includes('blood')) {
+                const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'NA'];
+                const currentVal = formData[field.key] || 'NA';
+                return (
+                  <div key={field.id} className="p-3 bg-red-50/30 rounded-xl border border-red-200/70 space-y-2">
+                    <label className="text-xs font-bold text-surface-900 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-red-500 font-bold">🩸</span>
+                        <span>{field.label} {isRequired && <span className="text-red-500">*</span>}</span>
+                      </span>
+                      <span className="text-[10px] text-red-700 bg-red-100/70 px-2 py-0.5 rounded font-semibold">
+                        Choose Option (Defaults to NA)
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-5 sm:grid-cols-9 gap-1.5">
+                      {bloodGroups.map((bg) => (
+                        <button
+                          key={bg}
+                          type="button"
+                          onClick={() => handleInputChange(field.key, bg)}
+                          className={`py-2 px-1 rounded-lg text-xs font-bold border transition-all text-center ${
+                            currentVal === bg
+                              ? 'bg-red-600 text-white border-red-600 shadow-xs scale-102'
+                              : 'bg-white text-surface-700 border-surface-300 hover:border-red-400 hover:text-red-700'
+                          }`}
+                        >
+                          {bg}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              {/* Smart Choice: Academic Session Dropdown */}
+              if (field.key === 'session' || field.label.toLowerCase().includes('session')) {
+                const standardSessions = ['2024-2026', '2025-2027', '2023-2025', '2022-2024', '2026-2028', '2021-2023'];
+                return (
+                  <div key={field.id}>
+                    <label className="text-xs font-semibold text-surface-800 flex items-center justify-between mb-1">
+                      <span>{field.label} {isRequired && <span className="text-red-500">*</span>}</span>
+                      <span className="text-[10px] text-surface-400">Standard Batch Format</span>
+                    </label>
+                    <select
+                      required={isRequired}
+                      value={formData[field.key] || ''}
+                      onChange={(e) => handleInputChange(field.key, e.target.value)}
+                      className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none font-medium"
+                    >
+                      <option value="">-- Choose Academic Session --</option>
+                      {standardSessions.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+
+              {/* Smart Choice: Gender Buttons */}
+              if (field.key === 'gender' || field.label.toLowerCase().includes('gender')) {
+                const genders = ['Male', 'Female', 'Other'];
+                const currentVal = formData[field.key] || '';
+                return (
+                  <div key={field.id}>
+                    <label className="text-xs font-semibold text-surface-800 block mb-1">
+                      {field.label} {isRequired && <span className="text-red-500">*</span>}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {genders.map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => handleInputChange(field.key, g)}
+                          className={`py-2 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
+                            currentVal === g
+                              ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                              : 'bg-white text-surface-700 border-surface-300 hover:border-brand-400'
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              {/* Smart Choice: Course / Trade Dropdown */}
+              if (
+                field.key === 'course' ||
+                field.key === 'trade' ||
+                field.label.toLowerCase().includes('course') ||
+                field.label.toLowerCase().includes('trade')
+              ) {
+                const standardCourses = [
+                  'D.El.Ed',
+                  'B.Ed',
+                  'B.A.',
+                  'B.Sc.',
+                  'B.Com.',
+                  'M.A.',
+                  'M.Sc.',
+                  'Intermediate Arts',
+                  'Intermediate Science',
+                  'Intermediate Commerce',
+                ];
+                return (
+                  <div key={field.id}>
+                    <label className="text-xs font-semibold text-surface-800 block mb-1">
+                      {field.label} {isRequired && <span className="text-red-500">*</span>}
+                    </label>
+                    <select
+                      required={isRequired}
+                      value={formData[field.key] || ''}
+                      onChange={(e) => handleInputChange(field.key, e.target.value)}
+                      className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none font-medium"
+                    >
+                      <option value="">-- Choose Course / Stream --</option>
+                      {standardCourses.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+
+              {/* Standard text input with auto-clean title-casing for name fields */}
+              const isPhoneField = field.type === 'phone' || field.key.toLowerCase().includes('mobile') || field.key.toLowerCase().includes('phone');
+              const isNameField = ['student_name', 'father_name', 'mother_name', 'name', 'full_name'].includes(field.key) ||
+                field.label.toLowerCase().includes('name') ||
+                field.label.toLowerCase().includes('father');
+
               return (
                 <div key={field.id}>
-                  <label className="text-xs font-semibold text-surface-800 block mb-1">
-                    {field.label} {isRequired && <span className="text-red-500">*</span>}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-surface-800">
+                      {field.label} {isRequired && <span className="text-red-500">*</span>}
+                    </label>
+                    {isPhoneField && (
+                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                        isCheckingPhone
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : isUpdateMode
+                          ? 'bg-blue-50 text-blue-700 border-blue-200 font-semibold'
+                          : 'bg-surface-100 text-surface-500 border-surface-200'
+                      }`}>
+                        {isCheckingPhone
+                          ? 'Checking registered records...'
+                          : isUpdateMode
+                          ? '✓ Registration linked'
+                          : 'Auto-fetches existing details'}
+                      </span>
+                    )}
+                  </div>
                   <input
                     type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
                     required={isRequired}
                     placeholder={field.placeholder || ''}
                     value={formData[field.key] || ''}
                     onChange={(e) => handleInputChange(field.key, e.target.value)}
+                    onBlur={(e) => {
+                      if (isNameField && e.target.value) {
+                        const cleaned = toCleanTitleCase(e.target.value);
+                        handleInputChange(field.key, cleaned);
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none"
                   />
                   {field.helpText && (
@@ -733,21 +1255,29 @@ export const PublicFormPage: React.FC = () => {
                   )}
                 </div>
               );
-            })}
+            });
+          })()}
 
             <div className="pt-4 border-t border-surface-100">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className={`w-full py-3 px-4 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                  isUpdateMode
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                    : 'bg-brand-600 hover:bg-brand-700 text-white shadow-brand-500/20'
+                }`}
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Submitting Data...</span>
+                    <span>{isUpdateMode ? 'Saving Updates...' : 'Submitting Data...'}</span>
                   </>
                 ) : (
-                  <span>Submit My Registration</span>
+                  <>
+                    {isUpdateMode ? <RefreshCw className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                    <span>{isUpdateMode ? 'Update & Save ID Card Registration' : 'Submit My Registration'}</span>
+                  </>
                 )}
               </button>
             </div>

@@ -11,12 +11,14 @@ import {
 import { Link } from 'react-router-dom';
 import { TemplateDocument } from '../../../types/template';
 import { renderCardToCanvas } from '../../generation/renderer/canvasRenderer';
+import { formatStructuredAddress } from '../../../lib/utils';
 
 interface SubmittedCardPreviewProps {
   submissionId: string;
   formTitle: string;
   templateDoc: TemplateDocument;
   formData: Record<string, any>;
+  isUpdate?: boolean;
   onReset?: () => void;
 }
 
@@ -25,6 +27,7 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
   formTitle,
   templateDoc,
   formData,
+  isUpdate = false,
   onReset,
 }) => {
   const [frontImgUrl, setFrontImgUrl] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
     '001';
 
   const photo = formData['photo_url'] || formData['photo'] || '';
+  const structuredAddr = formatStructuredAddress(formData);
 
   const enrichedRecord: Record<string, any> = {
     ...formData,
@@ -70,12 +74,15 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
     blood_group: formData['blood_group'] || '',
     mobile: formData['mobile'] || formData['Mobile_number'] || '',
     Mobile_number: formData['mobile'] || formData['Mobile_number'] || '',
-    address: formData['address'] || '',
-    police_station: formData['police_station'] || '',
-    pincode: formData['pincode'] || '',
-    district: formData['district'] || '',
-    city: formData['city'] || formData['district'] || '',
-    state: formData['state'] || '',
+    village_ward: structuredAddr.villageWard || formData['village_ward'] || formData['address'] || '',
+    address: structuredAddr.villageWard || formData['address'] || '',
+    police_station: structuredAddr.policeStation || formData['police_station'] || '',
+    pincode: structuredAddr.pincode || formData['pincode'] || '',
+    district: structuredAddr.district || formData['district'] || '',
+    city: structuredAddr.district || formData['district'] || '',
+    state: structuredAddr.state || formData['state'] || '',
+    district_pin: structuredAddr.districtPin || '',
+    full_address: structuredAddr.fullAddress || '',
   };
 
   useEffect(() => {
@@ -146,17 +153,22 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    Registration Submitted
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                    isUpdate
+                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  }`}>
+                    {isUpdate ? 'Registration Updated' : 'Registration Submitted'}
                   </span>
                   <span className="text-xs text-slate-400 truncate max-w-xs">{formTitle}</span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
-                  Submission Successful!
+                  {isUpdate ? 'Details Updated Successfully!' : 'Submission Successful!'}
                 </h1>
                 <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
-                  Your record has been transmitted to the college administration. Below is your official
-                  read-only ID card digital preview.
+                  {isUpdate
+                    ? 'Your changes have been saved and synchronized with your ID card badge record. Below is your updated official digital preview.'
+                    : 'Your record has been transmitted to the college administration. Below is your official read-only ID card digital preview.'}
                 </p>
               </div>
             </div>

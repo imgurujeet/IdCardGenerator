@@ -28,6 +28,7 @@ import {
   Layers,
   SlidersHorizontal,
   UserCheck,
+  Calendar,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { templateService } from '../../../services/template.service';
@@ -36,7 +37,13 @@ import { organizationService } from '../../../services/organization.service';
 import { generateSingleCardPdf } from '../../generation/renderer/pdfExporter';
 import { generateSingleCardJpg } from '../../generation/renderer/canvasRenderer';
 import { generateSingleCardZip, generateIndividualCardsZip } from '../../generation/renderer/zipExporter';
-import { triggerDownload, getRecordDisplayName, getRecordDisplayRoll, sanitizeFilenamePart } from '../../../lib/utils';
+import {
+  triggerDownload,
+  getRecordDisplayName,
+  getRecordDisplayRoll,
+  sanitizeFilenamePart,
+  formatDateCustom,
+} from '../../../lib/utils';
 import { FormFieldType } from '../../../types/form';
 
 interface ExtractedField {
@@ -111,6 +118,18 @@ export const EditorToolbar: React.FC = () => {
       setTimeout(() => setSaveStatus(null), 3000);
     }
   };
+
+  // Keyboard shortcut: Ctrl+S / Cmd+S to save template
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [doc, templateId, linkedFormId]);
 
   const handleQuickExport = async () => {
     if (!doc) return;
@@ -363,51 +382,52 @@ export const EditorToolbar: React.FC = () => {
 
   return (
     <>
-      <header className="h-14 bg-white border-b border-surface-200 px-4 flex items-center justify-between shrink-0 select-none z-20">
-        {/* Left: Template Title & Dirty State */}
+      <header className="h-14 bg-white border-b border-surface-200 px-3 flex items-center justify-between shrink-0 select-none z-20 gap-2 overflow-x-auto min-w-0">
         {/* Left: Home Navigation, Template Title & Dirty State */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
           <button
             onClick={() => navigate('/')}
             title="Go to Home Dashboard"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-200 bg-surface-50 hover:bg-surface-100 hover:border-surface-300 text-surface-800 font-semibold text-xs transition-colors shadow-xs group"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-surface-200 bg-surface-50 hover:bg-surface-100 hover:border-surface-300 text-surface-800 font-semibold text-xs transition-colors shadow-xs group shrink-0"
           >
             <Home className="w-3.5 h-3.5 text-brand-600 group-hover:scale-110 transition-transform" />
-            <span>Home</span>
+            <span className="hidden sm:inline">Home</span>
           </button>
 
           <div className="h-4 w-px bg-surface-200 shrink-0" />
 
-          <div className="flex items-center gap-2 min-w-0">
-            <h1 className="font-semibold text-surface-900 text-sm tracking-tight whitespace-nowrap truncate max-w-[240px]" title={doc.name}>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h1 className="font-semibold text-surface-900 text-xs sm:text-sm tracking-tight whitespace-nowrap truncate max-w-[110px] sm:max-w-[160px] lg:max-w-[200px]" title={doc.name}>
               {doc.name}
             </h1>
             {linkedFormId && (
-              <span className="hidden md:flex items-center gap-1 text-[10px] font-semibold text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200 shrink-0">
-                <LinkIcon className="w-3 h-3" /> Linked Form
+              <span className="hidden xl:flex items-center gap-1 text-[10px] font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-200 shrink-0">
+                <LinkIcon className="w-2.5 h-2.5" /> Form
               </span>
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-100 text-surface-600 border border-surface-200">
+          <div className="hidden 2xl:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-100 text-surface-600 border border-surface-200 shrink-0">
             <span className="capitalize">{doc.category}</span>
             <span>•</span>
             <span>{doc.dimensions.width}×{doc.dimensions.height}mm</span>
           </div>
 
           {isDirty ? (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              <AlertCircle className="w-3 h-3" /> Unsaved changes
+            <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 bg-amber-50 px-1.5 sm:px-2 py-0.5 rounded border border-amber-200 shrink-0 animate-pulse">
+              <AlertCircle className="w-3 h-3 text-amber-600" />
+              <span className="hidden sm:inline">Unsaved</span>
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              <CheckCircle2 className="w-3 h-3" /> Up to date
+            <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-700 bg-emerald-50 px-1.5 sm:px-2 py-0.5 rounded border border-emerald-200 shrink-0">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              <span className="hidden sm:inline">Saved</span>
             </span>
           )}
         </div>
 
         {/* Center: History, Layout, Zoom, and Grid Controls */}
-        <div className="flex items-center gap-1 bg-surface-50 border border-surface-200 p-1 rounded-lg">
+        <div className="flex items-center gap-0.5 bg-surface-50 border border-surface-200 p-0.5 rounded-lg shrink-0">
           {/* Undo / Redo */}
           <button
             onClick={undo}
@@ -415,7 +435,7 @@ export const EditorToolbar: React.FC = () => {
             title="Undo (Ctrl+Z)"
             className="p-1.5 rounded hover:bg-white text-surface-600 disabled:opacity-30 disabled:hover:bg-transparent"
           >
-            <Undo2 className="w-4 h-4" />
+            <Undo2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={redo}
@@ -423,16 +443,16 @@ export const EditorToolbar: React.FC = () => {
             title="Redo (Ctrl+Y)"
             className="p-1.5 rounded hover:bg-white text-surface-600 disabled:opacity-30 disabled:hover:bg-transparent"
           >
-            <Redo2 className="w-4 h-4" />
+            <Redo2 className="w-3.5 h-3.5" />
           </button>
 
-          <div className="h-4 w-px bg-surface-200 mx-1" />
+          <div className="h-4 w-px bg-surface-200 mx-0.5" />
 
           {/* Front / Back Side Switcher */}
           <div className="flex bg-surface-200 p-0.5 rounded text-xs font-medium">
             <button
               onClick={() => setActiveSide('front')}
-              className={`px-2.5 py-1 rounded transition-colors ${
+              className={`px-2 py-0.5 rounded transition-colors text-xs ${
                 activeSide === 'front' ? 'bg-white text-surface-900 shadow-sm font-semibold' : 'text-surface-600 hover:text-surface-900'
               }`}
             >
@@ -440,7 +460,7 @@ export const EditorToolbar: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveSide('back')}
-              className={`px-2.5 py-1 rounded transition-colors ${
+              className={`px-2 py-0.5 rounded transition-colors text-xs ${
                 activeSide === 'back' ? 'bg-white text-surface-900 shadow-sm font-semibold' : 'text-surface-600 hover:text-surface-900'
               }`}
             >
@@ -448,7 +468,7 @@ export const EditorToolbar: React.FC = () => {
             </button>
           </div>
 
-          <div className="h-4 w-px bg-surface-200 mx-1" />
+          <div className="h-4 w-px bg-surface-200 mx-0.5" />
 
           {/* Grid Snap */}
           <button
@@ -458,45 +478,45 @@ export const EditorToolbar: React.FC = () => {
               gridSnap ? 'bg-brand-100 text-brand-700' : 'hover:bg-white text-surface-600'
             }`}
           >
-            <Grid className="w-4 h-4" />
+            <Grid className="w-3.5 h-3.5" />
           </button>
 
           {/* Zoom */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={() => setZoom(zoom - 0.2)}
               title="Zoom Out"
-              className="p-1.5 rounded hover:bg-white text-surface-600"
+              className="p-1 rounded hover:bg-white text-surface-600"
             >
-              <ZoomOut className="w-4 h-4" />
+              <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs font-mono text-surface-700 w-12 text-center">
+            <span className="text-[11px] font-mono text-surface-700 w-9 text-center">
               {Math.round(zoom * 100)}%
             </span>
             <button
               onClick={() => setZoom(zoom + 0.2)}
               title="Zoom In"
-              className="p-1.5 rounded hover:bg-white text-surface-600"
+              className="p-1 rounded hover:bg-white text-surface-600"
             >
-              <ZoomIn className="w-4 h-4" />
+              <ZoomIn className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setZoom(1.5)}
               title="Reset Zoom"
-              className="p-1.5 rounded hover:bg-white text-surface-600"
+              className="p-1 rounded hover:bg-white text-surface-600"
             >
-              <Maximize2 className="w-3.5 h-3.5" />
+              <Maximize2 className="w-3 h-3" />
             </button>
           </div>
         </div>
 
         {/* Right: Data Switcher, Create Form, Quick Export & Save */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           {/* Real Data & Live Form Submission Selector */}
           {availableSampleRecords.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs bg-surface-50 border border-surface-200 px-2 py-1 rounded-lg shadow-2xs">
-              <span className="hidden lg:inline text-[10px] font-bold uppercase tracking-wider text-surface-500">
-                Live Data:
+            <div className="flex items-center gap-1 text-xs bg-surface-50 border border-surface-200 px-1.5 py-1 rounded-lg shadow-2xs shrink-0">
+              <span className="hidden 2xl:inline text-[9px] font-bold uppercase tracking-wider text-surface-500">
+                Data:
               </span>
               <button
                 type="button"
@@ -505,12 +525,12 @@ export const EditorToolbar: React.FC = () => {
                 className="p-0.5 rounded hover:bg-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
                 title="Previous Record"
               >
-                <ChevronLeft className="w-3.5 h-3.5 text-surface-600" />
+                <ChevronLeft className="w-3 h-3 text-surface-600" />
               </button>
               <select
                 value={sampleRecordIndex}
                 onChange={(e) => setSampleRecordIndex(Number(e.target.value))}
-                className="bg-transparent font-semibold text-surface-900 outline-none cursor-pointer text-xs max-w-[130px] sm:max-w-[180px] truncate"
+                className="bg-transparent font-semibold text-surface-900 outline-none cursor-pointer text-xs max-w-[100px] sm:max-w-[130px] lg:max-w-[150px] truncate"
                 title="Choose submitted student / real record to preview on front and back"
               >
                 {availableSampleRecords.map((rec, i) => {
@@ -530,17 +550,17 @@ export const EditorToolbar: React.FC = () => {
                 className="p-0.5 rounded hover:bg-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
                 title="Next Record"
               >
-                <ChevronRight className="w-3.5 h-3.5 text-surface-600" />
+                <ChevronRight className="w-3 h-3 text-surface-600" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowRecordEditorModal(true)}
                 title="Edit or Test Real Information Live on Card"
-                className="ml-1 p-1 rounded hover:bg-brand-100 text-brand-700 bg-brand-50 border border-brand-200 transition-colors flex items-center gap-1 text-[11px] font-semibold"
+                className="p-1 rounded hover:bg-brand-100 text-brand-700 bg-brand-50 border border-brand-200 transition-colors flex items-center gap-0.5 text-[10px] font-semibold"
               >
                 <SlidersHorizontal className="w-3 h-3 text-brand-600" />
-                <span className="hidden sm:inline">Edit Data</span>
+                <span className="hidden xl:inline">Edit</span>
               </button>
             </div>
           )}
@@ -549,26 +569,35 @@ export const EditorToolbar: React.FC = () => {
           <button
             onClick={handleOpenFormGenerator}
             title="Create a shareable student registration form based on this template"
-            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-2xs transition-colors shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Create Form</span>
+            <span className="hidden sm:inline">Create Form</span>
           </button>
 
-          {/* Download JPG Dropdown Menu */}
-          <div className="relative">
+          {/* Download JPG Split Button & Menu */}
+          <div className="relative inline-flex items-stretch rounded-lg shadow-2xs shrink-0">
             <button
-              onClick={() => setShowJpgMenu(!showJpgMenu)}
+              type="button"
+              onClick={() => handleExportSingleSideJpg(activeSide)}
               disabled={isExportingJpg}
-              title="Download card JPG images (Both Sides, Front, Back, or Bulk ZIP)"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-colors disabled:opacity-50 shrink-0"
+              title={`Download high-res 300 DPI JPG of current side (${activeSide === 'front' ? 'Front' : 'Back'})`}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-r-0 border-emerald-300 rounded-l-lg transition-colors disabled:opacity-50"
             >
               <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
               <span className="hidden sm:inline">
                 {isExportingJpg ? exportingLabel || 'Exporting...' : 'Download JPG'}
               </span>
               <span className="sm:hidden">JPG</span>
-              <ChevronDown className="w-3 h-3 text-emerald-600" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowJpgMenu(!showJpgMenu)}
+              disabled={isExportingJpg}
+              title="More JPG export options (Both Sides ZIP, Front, Back, Bulk All ZIP)"
+              className="px-1.5 py-1.5 text-xs text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-r-lg transition-colors disabled:opacity-50 flex items-center justify-center"
+            >
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-700" />
             </button>
 
             {showJpgMenu && (
@@ -635,24 +664,29 @@ export const EditorToolbar: React.FC = () => {
           <button
             onClick={handleQuickExport}
             disabled={isExporting}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 hover:text-surface-900 bg-white border border-surface-300 hover:border-surface-400 rounded-lg shadow-sm transition-colors disabled:opacity-50 shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-700 hover:text-surface-900 bg-white border border-surface-300 hover:border-surface-400 rounded-lg shadow-2xs transition-colors disabled:opacity-50 shrink-0"
+            title="Preview & Export Single Card High-Res PDF"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{isExporting ? 'Generating...' : 'Preview PDF'}</span>
+            <span className="hidden md:inline">{isExporting ? 'Generating...' : 'Preview PDF'}</span>
+            <span className="md:hidden">PDF</span>
           </button>
 
-          {/* Save Template Button */}
+          {/* Save Template Button — ALWAYS VISIBLE & HIGHLIGHTED */}
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 ${
+            title="Save Template Changes (Ctrl+S)"
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-sm transition-all disabled:opacity-50 shrink-0 sticky right-0 z-30 ${
               saveStatus?.includes('Saved')
-                ? 'bg-emerald-600 text-white'
-                : 'text-white bg-brand-600 hover:bg-brand-700'
+                ? 'bg-emerald-600 text-white shadow-emerald-200'
+                : isDirty
+                ? 'bg-brand-600 hover:bg-brand-700 text-white ring-2 ring-brand-300 ring-offset-1'
+                : 'bg-brand-600 hover:bg-brand-700 text-white'
             }`}
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{saveStatus || 'Save Changes'}</span>
+            <span>{isSaving ? 'Saving...' : saveStatus || 'Save'}</span>
           </button>
         </div>
       </header>
@@ -946,14 +980,37 @@ export const EditorToolbar: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="font-semibold text-surface-700 block mb-1">Blood Group</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-surface-700">Blood Group</label>
+                        {(!activeRec.blood_group || activeRec.blood_group === '') && (
+                          <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                            Defaults to NA
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
-                        value={activeRec.blood_group || ''}
+                        value={activeRec.blood_group || 'NA'}
                         onChange={(e) => updateCurrentSampleRecord({ blood_group: e.target.value })}
-                        placeholder="e.g. AB-"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-bold"
+                        placeholder="e.g. B+ or NA"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-bold text-xs"
                       />
+                      <div className="flex items-center flex-wrap gap-1 mt-1">
+                        {['A+', 'B+', 'O+', 'AB+', 'A-', 'B-', 'O-', 'AB-', 'NA'].map((bg) => (
+                          <button
+                            key={bg}
+                            type="button"
+                            onClick={() => updateCurrentSampleRecord({ blood_group: bg })}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                              (activeRec.blood_group || 'NA') === bg
+                                ? 'bg-red-600 text-white border-red-600'
+                                : 'bg-surface-100 hover:bg-surface-200 text-surface-700 border-surface-200'
+                            }`}
+                          >
+                            {bg}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -969,36 +1026,106 @@ export const EditorToolbar: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="font-semibold text-surface-700 block mb-1">Date of Birth (Back Side)</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-surface-700 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-brand-600" /> Date of Birth (D.O.B)
+                        </label>
+                        {activeRec.dob && activeRec.dob.includes('-') && activeRec.dob.split('-')[0].length === 4 && (
+                          <button
+                            type="button"
+                            onClick={() => updateCurrentSampleRecord({ dob: formatDateCustom(activeRec.dob, 'DD-MM-YYYY') })}
+                            className="text-[10px] text-brand-700 bg-brand-50 hover:bg-brand-100 px-1.5 py-0.5 rounded border border-brand-200 font-semibold cursor-pointer"
+                            title="Convert from YYYY-MM-DD to DD-MM-YYYY"
+                          >
+                            To DD-MM-YYYY
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         value={activeRec.dob || ''}
                         onChange={(e) => updateCurrentSampleRecord({ dob: e.target.value })}
                         placeholder="e.g. 08-03-2003"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 font-mono text-xs"
+                      />
+                      <div className="flex items-center flex-wrap gap-1 mt-1 text-[10px] text-surface-500">
+                        <span className="font-medium text-[9px] uppercase tracking-wider text-surface-400">Format:</span>
+                        {['DD-MM-YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD', 'DD-MM-YY', 'DD MMM YYYY'].map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button"
+                            onClick={() => {
+                              if (activeRec.dob) {
+                                updateCurrentSampleRecord({ dob: formatDateCustom(activeRec.dob, fmt) });
+                              }
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-surface-100 hover:bg-brand-50 hover:text-brand-700 text-surface-700 border border-surface-200 font-mono transition-colors text-[10px]"
+                            title={`Format DOB as ${fmt}`}
+                          >
+                            {fmt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-surface-700 block mb-1">Post Office (PO)</label>
+                      <input
+                        type="text"
+                        value={activeRec.post_office || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ post_office: e.target.value })}
+                        placeholder="e.g. Barh"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-surface-700">Police Station (PS)</label>
+                        {activeRec.police_station && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const psVal = activeRec.police_station;
+                              updateCurrentSampleRecord({ post_office: psVal, po_same_as_ps: true });
+                            }}
+                            className="text-[10px] text-brand-700 bg-brand-50 hover:bg-brand-100 px-1.5 py-0.2 rounded border border-brand-200 font-medium"
+                            title="Set Post Office same as Police Station"
+                          >
+                            Same as PO (PO+PS)
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={activeRec.police_station || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ police_station: e.target.value })}
+                        placeholder="e.g. Barh"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="font-semibold text-surface-700 block mb-1">Mobile Number (Back Side)</label>
+                      <label className="font-semibold text-surface-700 block mb-1">City / Town</label>
                       <input
                         type="text"
-                        value={activeRec.mobile || activeRec.Mobile_number || ''}
-                        onChange={(e) => updateCurrentSampleRecord({ mobile: e.target.value, Mobile_number: e.target.value })}
-                        placeholder="e.g. 9876543210"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                        value={activeRec.city || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ city: e.target.value })}
+                        placeholder="e.g. Patna"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
                       />
                     </div>
                     <div>
-                      <label className="font-semibold text-surface-700 block mb-1">Police Station (Back Side)</label>
+                      <label className="font-semibold text-surface-700 block mb-1">District - PIN</label>
                       <input
                         type="text"
-                        value={activeRec.police_station || ''}
-                        onChange={(e) => updateCurrentSampleRecord({ police_station: e.target.value })}
-                        placeholder="e.g. NTPC, Barh"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                        value={activeRec.district || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ district: e.target.value })}
+                        placeholder="e.g. Patna - 803213"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
                       />
                     </div>
                   </div>
@@ -1010,18 +1137,18 @@ export const EditorToolbar: React.FC = () => {
                         type="text"
                         value={activeRec.address || activeRec.full_address || ''}
                         onChange={(e) => updateCurrentSampleRecord({ address: e.target.value, full_address: e.target.value })}
-                        placeholder="e.g. Vill+PO- Railli"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                        placeholder="e.g. Vill- Akbarpur"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
                       />
                     </div>
                     <div>
-                      <label className="font-semibold text-surface-700 block mb-1">City / District (Back Side)</label>
+                      <label className="font-semibold text-surface-700 block mb-1">Mobile Number (Back Side)</label>
                       <input
                         type="text"
-                        value={activeRec.district || activeRec.city || ''}
-                        onChange={(e) => updateCurrentSampleRecord({ district: e.target.value, city: e.target.value })}
-                        placeholder="e.g. Patna-803221"
-                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500"
+                        value={activeRec.mobile || activeRec.Mobile_number || ''}
+                        onChange={(e) => updateCurrentSampleRecord({ mobile: e.target.value, Mobile_number: e.target.value })}
+                        placeholder="e.g. 9876543210"
+                        className="w-full px-2.5 py-1.5 border border-surface-300 rounded-lg bg-white outline-none focus:border-brand-500 text-xs"
                       />
                     </div>
                   </div>

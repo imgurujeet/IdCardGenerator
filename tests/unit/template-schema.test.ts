@@ -25,4 +25,28 @@ describe('Template Document Schema Validation', () => {
     const parseResult = TemplateDocumentSchema.safeParse(invalidDoc);
     expect(parseResult.success).toBe(false);
   });
+
+  it('correctly creates and positions a blank text box below an existing element', async () => {
+    const { useEditorStore } = await import('../../src/features/editor/store/useEditorStore');
+    useEditorStore.getState().setDocument(OAKWOOD_TEMPLATE_DOC);
+
+    const initialCount = useEditorStore.getState().document?.layouts.front.elements.length || 0;
+    const firstElem = useEditorStore.getState().document?.layouts.front.elements[0]!;
+
+    // Trigger addTextBoxBelow targeting firstElem
+    useEditorStore.getState().addTextBoxBelow(firstElem.id);
+
+    const doc = useEditorStore.getState().document!;
+    const newCount = doc.layouts.front.elements.length;
+    expect(newCount).toBe(initialCount + 1);
+
+    const newlyAdded = doc.layouts.front.elements[newCount - 1];
+    expect(newlyAdded.type).toBe('text');
+    expect((newlyAdded as any).content).toBe('');
+    expect(newlyAdded.x).toBe(firstElem.x);
+    // Positioned below firstElem.y + firstElem.height
+    expect(newlyAdded.y).toBeGreaterThanOrEqual(firstElem.y + firstElem.height);
+    // Newly added element is selected
+    expect(useEditorStore.getState().selectedElementId).toBe(newlyAdded.id);
+  });
 });
