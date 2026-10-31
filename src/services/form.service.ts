@@ -18,7 +18,7 @@ const DEFAULT_PTEC_FORM: FormEntity = {
   accepting_submissions: true,
   auto_approve: true,
   enforce_unique: true,
-  unique_field_key: 'roll_no',
+  unique_field_key: 'mobile',
   fields_schema: [
     {
       id: 'f-name',
@@ -134,10 +134,16 @@ function getStoredLocalForms(): FormEntity[] {
     if (!parsed.some((f) => f.public_slug === 'ptec1-6nk1' || f.id === DEFAULT_PTEC_FORM.id)) {
       parsed.push(DEFAULT_PTEC_FORM);
     }
-    return parsed.map((f) => ({
-      ...f,
-      auto_approve: f.auto_approve ?? true,
-    }));
+    return parsed.map((f) => {
+      // Ensure unique field is keyed by mobile for reliable student uniqueness
+      if (f.id === DEFAULT_PTEC_FORM.id || f.public_slug === 'ptec1-6nk1') {
+        f.unique_field_key = 'mobile';
+      }
+      return {
+        ...f,
+        auto_approve: f.auto_approve ?? true,
+      };
+    });
   } catch {
     return [DEFAULT_PTEC_FORM];
   }
@@ -463,19 +469,22 @@ export const formService = {
 
     // Check duplicate if enforce_unique is enabled
     if (form.enforce_unique && form.unique_field_key) {
-      const uniqueVal = String(data[form.unique_field_key] || '').trim().toLowerCase();
-      if (uniqueVal) {
-        const isDuplicate = localSubs.some((s) => {
-          if (s.form_id !== form.id) return false;
-          const val = String(s.data[form.unique_field_key!] || '').trim().toLowerCase();
-          return val === uniqueVal;
-        });
+      const isPhoneUnique = form.unique_field_key === 'mobile' || form.unique_field_key === 'phone';
+      if (!isPhoneUnique) {
+        const uniqueVal = String(data[form.unique_field_key] || '').trim().toLowerCase();
+        if (uniqueVal) {
+          const isDuplicate = localSubs.some((s) => {
+            if (s.form_id !== form.id) return false;
+            const val = String(s.data[form.unique_field_key!] || '').trim().toLowerCase();
+            return val === uniqueVal;
+          });
 
-        if (isDuplicate) {
-          return {
-            success: false,
-            error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Enter your registered mobile number to update your details.`,
-          };
+          if (isDuplicate) {
+            return {
+              success: false,
+              error: `A submission with this ${form.unique_field_key.replace('_', ' ')} (${uniqueVal}) has already been recorded. Click "Edit Previous Registration" to update your existing record.`,
+            };
+          }
         }
       }
     }
@@ -488,13 +497,12 @@ export const formService = {
     if (shouldAutoApprove) {
       initialStatus = 'approved';
       const identifier =
+        cleanPhone ||
         data['roll_no'] ||
         data['student_roll'] ||
         data['roll'] ||
         data['student_id'] ||
         data['employee_id'] ||
-        data['mobile'] ||
-        data['phone'] ||
         data['identifier'] ||
         `REC-${Date.now().toString().slice(-5)}`;
 

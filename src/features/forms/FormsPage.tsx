@@ -61,7 +61,7 @@ export const FormsPage: React.FC = () => {
   ]);
   const [autoApprove, setAutoApprove] = useState(true);
   const [enforceUnique, setEnforceUnique] = useState(true);
-  const [uniqueFieldKey, setUniqueFieldKey] = useState('roll_no');
+  const [uniqueFieldKey, setUniqueFieldKey] = useState('mobile');
   const [isSaving, setIsSaving] = useState(false);
 
   const orgId = organizationService.getActiveOrgId();
@@ -134,7 +134,7 @@ export const FormsPage: React.FC = () => {
     ]);
     setAutoApprove(true);
     setEnforceUnique(true);
-    setUniqueFieldKey('roll_no');
+    setUniqueFieldKey('mobile');
     setShowBuilder(true);
   };
 
@@ -145,7 +145,7 @@ export const FormsPage: React.FC = () => {
     setFields(form.fields_schema && form.fields_schema.length > 0 ? JSON.parse(JSON.stringify(form.fields_schema)) : []);
     setAutoApprove(form.auto_approve ?? true);
     setEnforceUnique(form.enforce_unique ?? true);
-    setUniqueFieldKey(form.unique_field_key || 'roll_no');
+    setUniqueFieldKey(form.unique_field_key || 'mobile');
     setShowBuilder(true);
   };
 

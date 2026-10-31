@@ -11,7 +11,6 @@ import {
   Crop,
   RefreshCw,
   Search,
-  Sparkles,
 } from 'lucide-react';
 import { formService } from '../../services/form.service';
 import { templateService } from '../../services/template.service';
@@ -104,7 +103,7 @@ export const PublicFormPage: React.FC = () => {
     }));
   };
 
-  // Auto-fetch existing details by 10-digit mobile number
+  // Look up existing registration details by 10-digit mobile number
   const handleAutoFetchByPhone = async (phoneToLookup: string) => {
     if (!form || !phoneToLookup) return;
     const cleanDigits = phoneToLookup.replace(/\D/g, '').slice(-10);
@@ -116,22 +115,68 @@ export const PublicFormPage: React.FC = () => {
       if (existing && existing.data) {
         setExistingSubmissionId(existing.id);
         setIsUpdateMode(true);
-        setFormData(existing.data);
 
-        // Pre-fill location components
         const d = existing.data;
-        const addrType = d.address_type || 'village';
-        const vName = d.village_name || d.village || d.village_ward || '';
-        const ps = d.police_station || d.ps || '';
-        const po = d.post_office || d.po || '';
+        const rawDob = d.dob || d.date_of_birth || d.birth_date || '';
+        const cleanDob = rawDob ? formatDateCustom(rawDob, 'DD-MM-YYYY') : '';
+
+        // Extract location components with fallback parsing from full address string
+        let addrType = d.address_type || 'village';
+        let vName = d.village_name || d.village || d.village_ward || '';
+        let ps = d.police_station || d.ps || '';
+        let po = d.post_office || d.po || '';
+        let c = d.city || '';
+        let st = d.state || 'Bihar';
+        let dist = d.district || 'Patna';
+        let pin = d.pincode || d.pin || '';
+
+        if ((!vName || !ps || !pin) && d.address) {
+          const raw = String(d.address);
+          const villMatch = raw.match(/(?:Vill|Village)\s*[-:]\s*([^,]+)/i);
+          const wardMatch = raw.match(/Ward(?:\s*No\.?)?\s*[-:]?\s*([^,]+)/i);
+          const poMatch = raw.match(/PO\s*[-:]\s*([^,]+)/i);
+          const psMatch = raw.match(/PS\s*[-:]\s*([^,]+)/i);
+          const distMatch = raw.match(/Dist\s*[-:]\s*([^,]+)/i);
+          const stateMatch = raw.match(/\(([^)]+)\)/);
+          const pinMatch = raw.match(/-\s*(\d{6})/);
+
+          if (villMatch && !vName) {
+            vName = villMatch[1].trim();
+            addrType = 'village';
+          } else if (wardMatch && !vName) {
+            vName = wardMatch[1].trim();
+            addrType = 'ward';
+          }
+          if (poMatch && !po) po = poMatch[1].trim();
+          if (psMatch && !ps) ps = psMatch[1].trim();
+          if (distMatch && !dist) dist = distMatch[1].trim();
+          if (stateMatch && !st) st = stateMatch[1].trim();
+          if (pinMatch && !pin) pin = pinMatch[1].trim();
+        }
+
         const samePoPs = d.po_same_as_ps !== undefined
           ? Boolean(d.po_same_as_ps)
-          : Boolean(po && ps && po.toLowerCase() === ps.toLowerCase());
-        const c = d.city || '';
-        const st = d.state || 'Bihar';
-        const dist = d.district || 'Patna';
-        const pin = d.pincode || d.pin || '';
+          : Boolean(po && ps && po.toLowerCase().trim() === ps.toLowerCase().trim());
 
+        const enriched: Record<string, any> = {
+          ...d,
+          dob: cleanDob || rawDob,
+          student_name: d.student_name || d.candidate_name || d.full_name || '',
+          roll_no: d.roll_no || d.student_roll || d.student_id || '',
+          session: d.session || '2026-2028',
+          father_name: d.father_name || d.father || '',
+          blood_group: d.blood_group || d.blood || 'NA',
+          mobile: cleanDigits,
+          village_name: vName,
+          police_station: ps,
+          post_office: po,
+          city: c,
+          state: st,
+          district: dist,
+          pincode: pin,
+        };
+
+        setFormData(enriched);
         setAddressType(addrType as any);
         setVillageName(vName);
         setPoliceStation(ps);
@@ -146,12 +191,12 @@ export const PublicFormPage: React.FC = () => {
           setPhotoPreview(d.photo_url || d.photo);
         }
 
-        const name = d.student_name || d.candidate_name || d.full_name || 'Student';
-        setAutoFetchNotice(`✓ Registration found for +91 ${cleanDigits} (${name})! Previous details have been loaded.`);
+        const name = d.student_name || d.candidate_name || d.full_name || 'Candidate';
+        setAutoFetchNotice(`✓ Loaded existing details for ${name} (+91 ${cleanDigits}). You can make changes and submit to update.`);
         setShowLookupBox(false);
       } else {
-        setAutoFetchNotice(`No previous registration found for +91 ${cleanDigits}. Proceeding with new submission.`);
-        setTimeout(() => setAutoFetchNotice(null), 4000);
+        setAutoFetchNotice(`No previous registration found for +91 ${cleanDigits}. You can fill in the form below.`);
+        setTimeout(() => setAutoFetchNotice(null), 5000);
       }
     } catch (err) {
       console.warn('Auto fetch by phone warning:', err);
@@ -210,18 +255,6 @@ export const PublicFormPage: React.FC = () => {
 
   const handleInputChange = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
-
-    // If entering a phone/mobile field, auto-fetch previous details if 10 digits are typed
-    const lowerKey = key.toLowerCase();
-    if (
-      (lowerKey.includes('mobile') || lowerKey.includes('phone') || lowerKey.includes('contact')) &&
-      typeof value === 'string'
-    ) {
-      const cleanDigits = value.replace(/\D/g, '').slice(-10);
-      if (cleanDigits.length === 10 && !isUpdateMode) {
-        handleAutoFetchByPhone(cleanDigits);
-      }
-    }
   };
 
   const handleStateSelect = (stateName: string, stateKey: string = 'state') => {
@@ -335,6 +368,13 @@ export const PublicFormPage: React.FC = () => {
         templateDoc={templateDoc}
         formData={{ ...formData, photo_url: photoPreview || formData['photo_url'] }}
         isUpdate={wasUpdated}
+        onEdit={() => {
+          // Keep all entered details, return to form in edit mode
+          setExistingSubmissionId(submittedId);
+          setIsUpdateMode(true);
+          setSubmittedId(null);
+          setAutoFetchNotice('Editing your submitted details. Make changes and submit to update your card.');
+        }}
         onReset={() => {
           setSubmittedId(null);
           setExistingSubmissionId(null);
@@ -386,63 +426,66 @@ export const PublicFormPage: React.FC = () => {
 
           {/* Form Body */}
           <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
-            {/* Returning Student Auto-Fetch & Update Mode Banner */}
+            {/* Optional Returning User Lookup or Active Update Bar */}
             {isUpdateMode ? (
-              <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-950 gap-3 shadow-2xs">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-950 gap-3 shadow-2xs">
                 <div className="flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
-                    <RefreshCw className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-blue-900">Update Mode Active</span>
-                      <span className="text-[10px] bg-blue-200/80 text-blue-800 px-1.5 py-0.2 rounded font-semibold">
-                        Existing Registration
+                      <span className="font-bold text-emerald-900">Editing Registration</span>
+                      <span className="text-[10px] bg-emerald-200/80 text-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                        Update Mode
                       </span>
                     </div>
-                    <p className="text-[11px] text-blue-700 mt-0.5">
-                      {autoFetchNotice || 'Previous details loaded. You can update any fields below and save changes.'}
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      {autoFetchNotice || 'Existing details loaded. Make any changes below and submit to update.'}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleClearUpdateMode}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-blue-800 bg-white hover:bg-blue-100 border border-blue-300 rounded-lg shadow-2xs transition-colors shrink-0"
+                  className="px-2.5 py-1 text-[11px] font-semibold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-colors shrink-0 cursor-pointer"
                 >
-                  Start New
+                  Clear / New Form
                 </button>
               </div>
             ) : (
-              <div className="p-3 bg-brand-50/60 border border-brand-200 rounded-xl text-xs space-y-2">
+              <div className="border border-surface-200 bg-surface-50/80 rounded-xl p-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-brand-900 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Already submitted? Update previous details</span>
+                  <span className="text-surface-600 flex items-center gap-1.5 font-medium">
+                    <Search className="w-3.5 h-3.5 text-surface-500" />
+                    <span>Already submitted? Look up with your mobile number to edit details</span>
                   </span>
                   <button
                     type="button"
-                    onClick={() => setShowLookupBox(!showLookupBox)}
-                    className="text-[11px] font-semibold text-brand-700 hover:text-brand-800 bg-white hover:bg-brand-50 px-2.5 py-1 rounded-lg border border-brand-200 shadow-2xs transition-colors"
+                    onClick={() => {
+                      setShowLookupBox(!showLookupBox);
+                      setAutoFetchNotice(null);
+                    }}
+                    className="text-[11px] font-semibold text-brand-700 hover:text-brand-800 bg-white hover:bg-surface-100 px-2.5 py-1 rounded-lg border border-surface-300 shadow-2xs transition-colors cursor-pointer"
                   >
-                    {showLookupBox ? 'Hide Lookup' : 'Find by Mobile Number'}
+                    {showLookupBox ? 'Close' : 'Lookup Registration'}
                   </button>
                 </div>
                 {showLookupBox && (
-                  <div className="pt-2 border-t border-brand-200/60 flex items-center gap-2">
+                  <div className="mt-2.5 pt-2.5 border-t border-surface-200 flex flex-col sm:flex-row items-center gap-2">
                     <input
                       type="tel"
                       maxLength={10}
-                      placeholder="Enter 10-digit registered mobile number"
+                      placeholder="Enter registered 10-digit mobile number"
                       value={lookupPhoneInput}
                       onChange={(e) => setLookupPhoneInput(e.target.value.replace(/\D/g, ''))}
-                      className="w-full px-3 py-1.5 bg-white border border-brand-300 rounded-lg text-xs outline-none focus:border-brand-500 font-mono shadow-2xs"
+                      className="w-full px-3 py-1.5 bg-white border border-surface-300 rounded-lg text-xs outline-none focus:border-brand-500 font-mono shadow-2xs"
                     />
                     <button
                       type="button"
                       disabled={lookupPhoneInput.length < 10 || isCheckingPhone}
                       onClick={() => handleAutoFetchByPhone(lookupPhoneInput)}
-                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 flex items-center gap-1 transition-colors"
+                      className="w-full sm:w-auto px-4 py-1.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       {isCheckingPhone ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                       <span>Fetch Details</span>
@@ -450,7 +493,7 @@ export const PublicFormPage: React.FC = () => {
                   </div>
                 )}
                 {autoFetchNotice && !isUpdateMode && (
-                  <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 font-medium">
+                  <p className="mt-2 text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
                     {autoFetchNotice}
                   </p>
                 )}
@@ -1033,6 +1076,8 @@ export const PublicFormPage: React.FC = () => {
 
               if (field.type === 'date') {
                 const currentVal = formData[field.key] || '';
+                // Standardize date to YYYY-MM-DD for native HTML date input
+                const isoDateVal = currentVal ? formatDateCustom(currentVal, 'YYYY-MM-DD') : '';
                 const previewDate = currentVal ? formatDateCustom(currentVal, 'DD-MM-YYYY') : '';
                 return (
                   <div key={field.id}>
@@ -1049,7 +1094,7 @@ export const PublicFormPage: React.FC = () => {
                     <input
                       type="date"
                       required={isRequired}
-                      value={currentVal}
+                      value={isoDateVal}
                       onChange={(e) => handleInputChange(field.key, e.target.value)}
                       className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none"
                     />
@@ -1220,19 +1265,9 @@ export const PublicFormPage: React.FC = () => {
                     <label className="text-xs font-semibold text-surface-800">
                       {field.label} {isRequired && <span className="text-red-500">*</span>}
                     </label>
-                    {isPhoneField && (
-                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
-                        isCheckingPhone
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : isUpdateMode
-                          ? 'bg-blue-50 text-blue-700 border-blue-200 font-semibold'
-                          : 'bg-surface-100 text-surface-500 border-surface-200'
-                      }`}>
-                        {isCheckingPhone
-                          ? 'Checking registered records...'
-                          : isUpdateMode
-                          ? '✓ Registration linked'
-                          : 'Auto-fetches existing details'}
+                    {isPhoneField && isUpdateMode && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
+                        Registered Number
                       </span>
                     )}
                   </div>
@@ -1246,6 +1281,11 @@ export const PublicFormPage: React.FC = () => {
                       if (isNameField && e.target.value) {
                         const cleaned = toCleanTitleCase(e.target.value);
                         handleInputChange(field.key, cleaned);
+                      }
+                      const isDobField = field.key === 'dob' || field.label.toLowerCase().includes('date of birth') || field.label.toLowerCase().includes('dob');
+                      if (isDobField && e.target.value) {
+                        const formatted = formatDateCustom(e.target.value, 'DD-MM-YYYY');
+                        handleInputChange(field.key, formatted);
                       }
                     }}
                     className="w-full px-3 py-2 border border-surface-300 rounded-lg text-xs bg-white text-surface-900 focus:border-brand-500 outline-none"

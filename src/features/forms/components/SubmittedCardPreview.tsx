@@ -7,6 +7,7 @@ import {
   Home,
   Copy,
   Check,
+  Edit3,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { TemplateDocument } from '../../../types/template';
@@ -20,6 +21,7 @@ interface SubmittedCardPreviewProps {
   formData: Record<string, any>;
   isUpdate?: boolean;
   onReset?: () => void;
+  onEdit?: () => void;
 }
 
 export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
@@ -29,6 +31,7 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
   formData,
   isUpdate = false,
   onReset,
+  onEdit,
 }) => {
   const [frontImgUrl, setFrontImgUrl] = useState<string | null>(null);
   const [backImgUrl, setBackImgUrl] = useState<string | null>(null);
@@ -173,24 +176,36 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
               </div>
             </div>
 
-            {/* Reference ID Pill */}
-            <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-700 sm:text-right shrink-0">
-              <span className="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">
-                Submission Reference
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <code className="font-mono text-xs sm:text-sm font-bold text-amber-400">
-                  {submissionId}
-                </code>
+            {/* Reference ID Pill & Edit Action */}
+            <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-700 sm:text-right shrink-0 flex flex-col items-start sm:items-end gap-2.5">
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">
+                  Submission Reference
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <code className="font-mono text-xs sm:text-sm font-bold text-amber-400">
+                    {submissionId}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={copyRefId}
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    title="Copy Reference"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {onEdit && (
                 <button
                   type="button"
-                  onClick={copyRefId}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                  title="Copy Reference"
+                  onClick={onEdit}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit / Update Details</span>
                 </button>
-              </div>
+              )}
             </div>
           </div>
 
@@ -392,16 +407,29 @@ export const SubmittedCardPreview: React.FC<SubmittedCardPreviewProps> = ({
             <span>Return to Home</span>
           </Link>
 
-          {onReset && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Submit Another Candidate</span>
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-semibold shadow-md transition-colors cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Details</span>
+              </button>
+            )}
+
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Submit Another Candidate</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
