@@ -118,12 +118,17 @@ async function renderElement(
   ctx.save();
   ctx.globalAlpha = elem.opacity ?? 1;
 
-  // Handle rotation
-  if (elem.rotation && elem.rotation !== 0) {
-    const cx = x + w / 2;
-    const cy = y + h / 2;
+  // Handle rotation & flips
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  if ((elem.rotation && elem.rotation !== 0) || elem.flipX || elem.flipY) {
     ctx.translate(cx, cy);
-    ctx.rotate((elem.rotation * Math.PI) / 180);
+    if (elem.rotation) {
+      ctx.rotate((elem.rotation * Math.PI) / 180);
+    }
+    if (elem.flipX || elem.flipY) {
+      ctx.scale(elem.flipX ? -1 : 1, elem.flipY ? -1 : 1);
+    }
     ctx.translate(-cx, -cy);
   }
 
@@ -172,12 +177,18 @@ async function renderElement(
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();
 
-      // Automatically auto-fit font size based on bounding box width & height
+      const scaleX = (elem.scaleX ?? 100) / 100;
+      const scaleY = (elem.scaleY ?? 100) / 100;
+      const skewX = elem.skewX ?? 0;
+      const skewY = elem.skewY ?? 0;
+
+      // Automatically auto-fit font size based on bounding box width & height (factoring in horizontal stretch)
       let effectiveFontSizeMm = elem.fontSize;
       if (elem.autoFit !== false && (elem.autoFit || elem.type === 'dynamic-text' || elem.fieldKey)) {
+        const effectiveFitWidthMm = scaleX > 0 ? elem.width / scaleX : elem.width;
         effectiveFontSizeMm = calculateAutoFitFontSizeMm(
           rawText,
-          elem.width,
+          effectiveFitWidthMm,
           elem.height,
           elem.fontSize,
           elem.fontFamily || 'Inter',
@@ -250,6 +261,17 @@ async function renderElement(
       const lineHeightPx = activeFontPx * (elem.lineHeight || 1.25);
       const totalBlockHeightPx = lines.length * lineHeightPx;
 
+      // Set letter spacing if configured and supported by canvas
+      if (elem.letterSpacing) {
+        try {
+          if ('letterSpacing' in ctx) {
+            (ctx as any).letterSpacing = `${elem.letterSpacing}px`;
+          }
+        } catch {
+          // ignore unsupported letterSpacing in headless test environments
+        }
+      }
+
       // Calculate the vertical block starting top to match CSS flexbox alignment:
       // - 'top': y
       // - 'bottom': y + h - totalBlockHeightPx
@@ -262,6 +284,31 @@ async function renderElement(
       } else {
         // middle / center (default)
         blockTop = y + (h - totalBlockHeightPx) / 2;
+      }
+
+      // Apply Photoshop-style text transform (horizontal scale, vertical scale, slant skew)
+      const hasTextTransform = scaleX !== 1 || scaleY !== 1 || skewX !== 0 || skewY !== 0;
+      if (hasTextTransform) {
+        ctx.save();
+        let originX = x;
+        if (elem.textAlign === 'center') originX = x + w / 2;
+        else if (elem.textAlign === 'right') originX = x + w;
+
+        let originY = y + h / 2;
+        if (elem.verticalAlign === 'top') originY = y;
+        else if (elem.verticalAlign === 'bottom') originY = y + h;
+
+        ctx.translate(originX, originY);
+        if (skewX !== 0) {
+          ctx.transform(1, 0, Math.tan((skewX * Math.PI) / 180), 1, 0, 0);
+        }
+        if (skewY !== 0) {
+          ctx.transform(1, Math.tan((skewY * Math.PI) / 180), 0, 1, 0, 0);
+        }
+        if (scaleX !== 1 || scaleY !== 1) {
+          ctx.scale(scaleX, scaleY);
+        }
+        ctx.translate(-originX, -originY);
       }
 
       lines.forEach((line, idx) => {
@@ -296,6 +343,11 @@ async function renderElement(
           ctx.stroke();
         }
       });
+
+      if (hasTextTransform) {
+        ctx.restore();
+      }
+
       ctx.restore(); // Restore from clip
       break;
     }

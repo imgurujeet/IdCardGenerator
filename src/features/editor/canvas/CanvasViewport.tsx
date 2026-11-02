@@ -19,6 +19,8 @@ import {
   AlignCenter,
   Maximize2,
   Plus,
+  RotateCw,
+  FlipHorizontal,
 } from 'lucide-react';
 
 export const CanvasViewport: React.FC = () => {
@@ -39,9 +41,19 @@ export const CanvasViewport: React.FC = () => {
   } = useEditorStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragHandle, setDragHandle] = useState<string | null>(null);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number; elemX: number; elemY: number; elemW: number; elemH: number } | null>(null);
+  const [dragStart, setDragStart] = useState<{
+    x: number;
+    y: number;
+    elemX: number;
+    elemY: number;
+    elemW: number;
+    elemH: number;
+    centerScreenX?: number;
+    centerScreenY?: number;
+  } | null>(null);
 
   // Photoshop-style Ctrl/Alt + Mouse Wheel zoom
   useEffect(() => {
@@ -157,6 +169,26 @@ export const CanvasViewport: React.FC = () => {
       let newW = dragStart.elemW;
       let newH = dragStart.elemH;
 
+      if (dragHandle === 'rotate') {
+        const cx = dragStart.centerScreenX ?? dragStart.x;
+        const cy = dragStart.centerScreenY ?? dragStart.y;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        let deg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (deg < 0) deg += 360;
+        if (deg >= 360) deg -= 360;
+
+        // Holding Shift snaps to 15-degree increments (like Photoshop)
+        if (e.shiftKey) {
+          deg = Math.round(deg / 15) * 15;
+        } else {
+          deg = Math.round(deg);
+        }
+
+        updateElement(selectedElem.id, { rotation: deg });
+        return;
+      }
+
       if (dragHandle === 'move') {
         newX = dragStart.elemX + deltaX_mm;
         newY = dragStart.elemY + deltaY_mm;
@@ -168,33 +200,73 @@ export const CanvasViewport: React.FC = () => {
 
         updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), y: Number(newY.toFixed(2)) });
       } else if (dragHandle === 'e') {
-        // Drag right edge horizontally to widen/narrow chosen area
-        newW = Math.max(3, dragStart.elemW + deltaX_mm);
-        if (gridSnap) newW = Math.round(newW / gridSizeMm) * gridSizeMm;
-        updateElement(selectedElem.id, { width: Number(newW.toFixed(2)) });
+        // Drag right edge horizontally (Alt = stretch from center)
+        if (e.altKey) {
+          newW = Math.max(3, dragStart.elemW + deltaX_mm * 2);
+          newX = dragStart.elemX - deltaX_mm;
+          if (gridSnap) {
+            newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+            newX = Math.round(newX / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), width: Number(newW.toFixed(2)) });
+        } else {
+          newW = Math.max(3, dragStart.elemW + deltaX_mm);
+          if (gridSnap) newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+          updateElement(selectedElem.id, { width: Number(newW.toFixed(2)) });
+        }
       } else if (dragHandle === 'w') {
-        // Drag left edge horizontally
-        newW = Math.max(3, dragStart.elemW - deltaX_mm);
-        newX = dragStart.elemX + deltaX_mm;
-        if (gridSnap) {
-          newX = Math.round(newX / gridSizeMm) * gridSizeMm;
-          newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+        // Drag left edge horizontally (Alt = stretch from center)
+        if (e.altKey) {
+          newW = Math.max(3, dragStart.elemW - deltaX_mm * 2);
+          newX = dragStart.elemX + deltaX_mm;
+          if (gridSnap) {
+            newX = Math.round(newX / gridSizeMm) * gridSizeMm;
+            newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), width: Number(newW.toFixed(2)) });
+        } else {
+          newW = Math.max(3, dragStart.elemW - deltaX_mm);
+          newX = dragStart.elemX + deltaX_mm;
+          if (gridSnap) {
+            newX = Math.round(newX / gridSizeMm) * gridSizeMm;
+            newW = Math.round(newW / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), width: Number(newW.toFixed(2)) });
         }
-        updateElement(selectedElem.id, { x: Number(newX.toFixed(2)), width: Number(newW.toFixed(2)) });
       } else if (dragHandle === 's') {
-        // Drag bottom edge vertically
-        newH = Math.max(3, dragStart.elemH + deltaY_mm);
-        if (gridSnap) newH = Math.round(newH / gridSizeMm) * gridSizeMm;
-        updateElement(selectedElem.id, { height: Number(newH.toFixed(2)) });
-      } else if (dragHandle === 'n') {
-        // Drag top edge vertically
-        newY = dragStart.elemY + deltaY_mm;
-        newH = Math.max(3, dragStart.elemH - deltaY_mm);
-        if (gridSnap) {
-          newY = Math.round(newY / gridSizeMm) * gridSizeMm;
-          newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+        // Drag bottom edge vertically (Alt = stretch from center)
+        if (e.altKey) {
+          newH = Math.max(3, dragStart.elemH + deltaY_mm * 2);
+          newY = dragStart.elemY - deltaY_mm;
+          if (gridSnap) {
+            newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+            newY = Math.round(newY / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { y: Number(newY.toFixed(2)), height: Number(newH.toFixed(2)) });
+        } else {
+          newH = Math.max(3, dragStart.elemH + deltaY_mm);
+          if (gridSnap) newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+          updateElement(selectedElem.id, { height: Number(newH.toFixed(2)) });
         }
-        updateElement(selectedElem.id, { y: Number(newY.toFixed(2)), height: Number(newH.toFixed(2)) });
+      } else if (dragHandle === 'n') {
+        // Drag top edge vertically (Alt = stretch from center)
+        if (e.altKey) {
+          newH = Math.max(3, dragStart.elemH - deltaY_mm * 2);
+          newY = dragStart.elemY + deltaY_mm;
+          if (gridSnap) {
+            newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+            newY = Math.round(newY / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { y: Number(newY.toFixed(2)), height: Number(newH.toFixed(2)) });
+        } else {
+          newY = dragStart.elemY + deltaY_mm;
+          newH = Math.max(3, dragStart.elemH - deltaY_mm);
+          if (gridSnap) {
+            newY = Math.round(newY / gridSizeMm) * gridSizeMm;
+            newH = Math.round(newH / gridSizeMm) * gridSizeMm;
+          }
+          updateElement(selectedElem.id, { y: Number(newY.toFixed(2)), height: Number(newH.toFixed(2)) });
+        }
       } else if (dragHandle === 'se') {
         newW = Math.max(3, dragStart.elemW + deltaX_mm);
         newH = Math.max(3, dragStart.elemH + deltaY_mm);
@@ -275,6 +347,14 @@ export const CanvasViewport: React.FC = () => {
     setSelectedElementId(elem.id);
     if (elem.locked) return;
 
+    let centerScreenX = e.clientX;
+    let centerScreenY = e.clientY;
+    if (cardRef.current) {
+      const cardRect = cardRef.current.getBoundingClientRect();
+      centerScreenX = cardRect.left + mmToPx(elem.x + elem.width / 2, screenDpi);
+      centerScreenY = cardRect.top + mmToPx(elem.y + elem.height / 2, screenDpi);
+    }
+
     setIsDragging(true);
     setDragHandle(handle);
     setDragStart({
@@ -284,6 +364,8 @@ export const CanvasViewport: React.FC = () => {
       elemY: elem.y,
       elemW: elem.width,
       elemH: elem.height,
+      centerScreenX,
+      centerScreenY,
     });
   };
 
@@ -303,6 +385,7 @@ export const CanvasViewport: React.FC = () => {
     >
       {/* Physical Card Container */}
       <div
+        ref={cardRef}
         className="relative bg-white shadow-card transition-shadow border border-surface-300"
         style={{
           width: `${cardWidthPx}px`,
@@ -333,6 +416,12 @@ export const CanvasViewport: React.FC = () => {
             const w = mmToPx(elem.width, screenDpi);
             const h = mmToPx(elem.height, screenDpi);
 
+            const containerTransforms: string[] = [];
+            if (elem.rotation) containerTransforms.push(`rotate(${elem.rotation}deg)`);
+            if (elem.flipX || elem.flipY) {
+              containerTransforms.push(`scale(${elem.flipX ? -1 : 1}, ${elem.flipY ? -1 : 1})`);
+            }
+
             return (
               <div
                 key={elem.id}
@@ -350,7 +439,7 @@ export const CanvasViewport: React.FC = () => {
                   top: `${y}px`,
                   width: `${w}px`,
                   height: `${h}px`,
-                  transform: elem.rotation ? `rotate(${elem.rotation}deg)` : undefined,
+                  transform: containerTransforms.length > 0 ? containerTransforms.join(' ') : undefined,
                   opacity: elem.opacity ?? 1,
                   zIndex: elem.zIndex,
                 }}
@@ -358,9 +447,24 @@ export const CanvasViewport: React.FC = () => {
                 {/* Element Content Render */}
                 {renderEditorElement(elem, currentRecord, screenDpi)}
 
-                {/* 8 Resize Handles for Selected Element */}
+                {/* 8 Resize Handles & Photoshop Rotation Knob for Selected Element */}
                 {isSelected && !elem.locked && (
                   <>
+                    {/* Photoshop-Style Rotation Handle with Stalk Line */}
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 w-0.5 h-5 bg-brand-500 pointer-events-none" />
+                    <div
+                      onMouseDown={(e) => startDrag(e, 'rotate', elem)}
+                      className="absolute -top-8 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-brand-600 rounded-full cursor-grab active:cursor-grabbing z-50 shadow-md hover:scale-125 transition-transform flex items-center justify-center group"
+                      title={`Rotate (${elem.rotation || 0}°) — Drag to rotate, Shift to snap 15°`}
+                    >
+                      <RotateCw className="w-2.5 h-2.5 text-brand-600 pointer-events-none" />
+                      {isDragging && dragHandle === 'rotate' && (
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-surface-900 text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap">
+                          {elem.rotation || 0}°
+                        </div>
+                      )}
+                    </div>
+
                     {/* Corners */}
                     <div
                       onMouseDown={(e) => startDrag(e, 'nw', elem)}
@@ -383,26 +487,26 @@ export const CanvasViewport: React.FC = () => {
                       title="Resize Bottom-Left"
                     />
 
-                    {/* Edge Midpoint Handles */}
+                    {/* Edge Midpoint Handles (Alt = Stretch symmetrically) */}
                     <div
                       onMouseDown={(e) => startDrag(e, 'e', elem)}
                       className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ew-resize z-50 shadow-sm hover:scale-125 transition-transform"
-                      title="Choose Width / Adjust Right Edge"
+                      title="Adjust Width (Hold Alt for symmetric stretch)"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 'w', elem)}
                       className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ew-resize z-50 shadow-sm hover:scale-125 transition-transform"
-                      title="Choose Width / Adjust Left Edge"
+                      title="Adjust Width (Hold Alt for symmetric stretch)"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 'n', elem)}
                       className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ns-resize z-50 shadow-sm hover:scale-125 transition-transform"
-                      title="Choose Height / Adjust Top Edge"
+                      title="Adjust Height (Hold Alt for symmetric stretch)"
                     />
                     <div
                       onMouseDown={(e) => startDrag(e, 's', elem)}
                       className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-brand-600 border border-white rounded-full cursor-ns-resize z-50 shadow-sm hover:scale-125 transition-transform"
-                      title="Choose Height / Adjust Bottom Edge"
+                      title="Adjust Height (Hold Alt for symmetric stretch)"
                     />
 
                     {/* Quick Floating Adjustment Micro-Bar */}
@@ -425,7 +529,40 @@ export const CanvasViewport: React.FC = () => {
                         <span>Center</span>
                       </button>
 
-                      {/* Auto-Fit Toggle for Text */}
+                      {/* Rotate 90° button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextRot = ((elem.rotation || 0) + 90) % 360;
+                          updateElement(elem.id, { rotation: nextRot });
+                        }}
+                        title="Rotate 90° Clockwise"
+                        className="px-1.5 py-0.5 rounded hover:bg-surface-800 text-surface-200 hover:text-white flex items-center gap-1 text-[10px] font-medium"
+                      >
+                        <RotateCw className="w-3 h-3 text-amber-400" />
+                        <span>90°</span>
+                      </button>
+
+                      {/* Flip Horizontal */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateElement(elem.id, { flipX: !elem.flipX });
+                        }}
+                        title="Flip Layer Horizontally"
+                        className={`px-1.5 py-0.5 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${
+                          elem.flipX
+                            ? 'bg-brand-600 text-white font-bold'
+                            : 'hover:bg-surface-800 text-surface-200 hover:text-white'
+                        }`}
+                      >
+                        <FlipHorizontal className="w-3 h-3" />
+                        <span>Flip</span>
+                      </button>
+
+                      {/* Auto-Fit & Stretch Controls for Text */}
                       {(elem.type === 'text' || elem.type === 'dynamic-text') && (
                         <>
                           <button
@@ -444,6 +581,37 @@ export const CanvasViewport: React.FC = () => {
                             <Sparkles className="w-3 h-3 text-emerald-400" />
                             <span>Auto-Fit {elem.autoFit !== false ? 'ON' : 'OFF'}</span>
                           </button>
+
+                          {/* Horizontal Stretch Quick Buttons */}
+                          <div className="flex items-center border-l border-surface-700 pl-1.5 gap-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const current = elem.scaleX ?? 100;
+                                updateElement(elem.id, { scaleX: Math.max(50, current - 10) });
+                              }}
+                              title="Condense Text Width (-10%)"
+                              className="px-1 py-0.5 rounded hover:bg-surface-800 text-purple-300 hover:text-white font-mono text-[10px] font-bold"
+                            >
+                              T↔ -
+                            </button>
+                            <span className="text-[9px] font-mono text-purple-300 font-bold px-0.5">
+                              {elem.scaleX ?? 100}%
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const current = elem.scaleX ?? 100;
+                                updateElement(elem.id, { scaleX: Math.min(250, current + 10) });
+                              }}
+                              title="Stretch Text Width (+10%)"
+                              className="px-1 py-0.5 rounded hover:bg-surface-800 text-purple-300 hover:text-white font-mono text-[10px] font-bold"
+                            >
+                              T↔ +
+                            </button>
+                          </div>
 
                           <button
                             type="button"
@@ -577,12 +745,18 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
       if (elem.textTransform === 'uppercase') rawText = rawText.toUpperCase();
       if (elem.textTransform === 'lowercase') rawText = rawText.toLowerCase();
 
-      // Automatically auto-fit font size based on bounding box width & height
+      const scaleX = (elem.scaleX ?? 100) / 100;
+      const scaleY = (elem.scaleY ?? 100) / 100;
+      const skewX = elem.skewX ?? 0;
+      const skewY = elem.skewY ?? 0;
+
+      // Automatically auto-fit font size based on bounding box width & height (factoring in horizontal stretch)
       let effectiveFontSizeMm = elem.fontSize;
       if (elem.autoFit !== false && (elem.autoFit || elem.type === 'dynamic-text' || elem.fieldKey)) {
+        const effectiveFitWidthMm = scaleX > 0 ? elem.width / scaleX : elem.width;
         effectiveFontSizeMm = calculateAutoFitFontSizeMm(
           rawText,
-          elem.width,
+          effectiveFitWidthMm,
           elem.height,
           elem.fontSize,
           elem.fontFamily || 'Inter',
@@ -609,10 +783,25 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
       // This must match what calculateAutoFitFontSizeMm uses internally (baseFontSizeMm * 1.4).
       const isSingleLine = elem.height < (elem.fontSize * 1.4) || elem.maxLines === 1;
       const fontSpec = `${elem.fontStyle || 'normal'} ${
-        elem.fontWeight === 'bold' ? '700' : elem.fontWeight === 'semibold' ? '600' : elem.fontWeight === 'medium' ? '500' : '400'
+        elem.fontWeight === 'bold' ? '700' : elem.fontWeight === 'semibold' ? '600' : elem.fontWeight === 'medium' ? 500 : 400
       } ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
       const measureFn = createTextMeasureFn(fontSpec);
       const wrappedLines = isSingleLine ? [rawText] : wrapTextToLines(rawText, boxWidthPx, measureFn);
+
+      const transforms: string[] = [];
+      if (scaleX !== 1 || scaleY !== 1) {
+        transforms.push(`scale(${scaleX}, ${scaleY})`);
+      }
+      if (skewX !== 0) {
+        transforms.push(`skewX(${skewX}deg)`);
+      }
+      if (skewY !== 0) {
+        transforms.push(`skewY(${skewY}deg)`);
+      }
+      const textTransformMatrix = transforms.length > 0 ? transforms.join(' ') : undefined;
+
+      const originX = elem.textAlign === 'center' ? 'center' : elem.textAlign === 'right' ? 'right' : 'left';
+      const originY = elem.verticalAlign === 'top' ? 'top' : elem.verticalAlign === 'bottom' ? 'bottom' : 'center';
 
       return (
         <div
@@ -622,12 +811,15 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
             fontFamily: `"${elem.fontFamily || 'Inter'}", sans-serif`,
             fontSize: `${fontSizePx}px`,
             lineHeight: lineHeightValue,
+            letterSpacing: elem.letterSpacing ? `${elem.letterSpacing}px` : undefined,
             fontWeight: elem.fontWeight === 'bold' ? 700 : elem.fontWeight === 'semibold' ? 600 : elem.fontWeight === 'medium' ? 500 : 400,
             fontStyle: elem.fontStyle || 'normal',
             textAlign: elem.textAlign || 'left',
             textDecoration: elem.underline ? 'underline' : undefined,
             textShadow: textShadowStyle,
             WebkitTextStroke: strokeStyle,
+            transform: textTransformMatrix,
+            transformOrigin: textTransformMatrix ? `${originX} ${originY}` : undefined,
           }}
         >
           {wrappedLines.map((line, i) => (

@@ -26,6 +26,10 @@ import {
   Check,
   Laptop,
   Calendar,
+  RotateCw,
+  RotateCcw,
+  FlipHorizontal,
+  FlipVertical,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { resolveElementText, DATE_FORMAT_OPTIONS } from '../../../lib/utils';
@@ -474,6 +478,123 @@ export const PropertiesSidebar: React.FC = () => {
                 />
                 <span className="text-[10px] text-surface-400">mm</span>
               </div>
+            </div>
+          </div>
+
+          {/* Photoshop Free Transform: Rotation & Flips */}
+          <div className="mt-2.5 p-2.5 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-surface-700 uppercase tracking-wider flex items-center gap-1.5">
+                <RotateCw className="w-3.5 h-3.5 text-brand-600" />
+                <span>Photoshop Free Transform</span>
+              </span>
+              <span className="text-[10px] font-mono text-surface-500 bg-surface-200/80 px-1.5 py-0.5 rounded">
+                {selectedElem.rotation || 0}°
+              </span>
+            </div>
+
+            {/* Rotation Angle Input & Quick Presets */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-surface-500">Angle (°)</label>
+                <div className="flex items-center border border-surface-300 rounded px-2 py-0.5 bg-white w-24">
+                  <input
+                    type="number"
+                    min="-360"
+                    max="360"
+                    step="1"
+                    value={selectedElem.rotation || 0}
+                    onChange={(e) => {
+                      let val = Number(e.target.value);
+                      if (val >= 360 || val <= -360) val = val % 360;
+                      updateElement(selectedElem.id, { rotation: val });
+                    }}
+                    className="w-full bg-transparent outline-none font-mono text-xs text-right pr-1"
+                  />
+                  <span className="text-[10px] text-surface-400 font-mono">°</span>
+                </div>
+              </div>
+
+              {/* Quick Rotation Buttons */}
+              <div className="grid grid-cols-4 gap-1 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentRot = selectedElem.rotation || 0;
+                    updateElement(selectedElem.id, { rotation: (currentRot - 90 + 360) % 360 });
+                  }}
+                  className="py-1 px-1 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Rotate 90° Counter-Clockwise"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>-90°</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentRot = selectedElem.rotation || 0;
+                    updateElement(selectedElem.id, { rotation: (currentRot + 90) % 360 });
+                  }}
+                  className="py-1 px-1 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Rotate 90° Clockwise"
+                >
+                  <RotateCw className="w-3 h-3" />
+                  <span>+90°</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentRot = selectedElem.rotation || 0;
+                    updateElement(selectedElem.id, { rotation: (currentRot + 180) % 360 });
+                  }}
+                  className="py-1 px-1 bg-white border border-surface-300 hover:border-brand-500 rounded text-surface-700 hover:text-brand-600 font-medium flex items-center justify-center shadow-2xs transition-colors cursor-pointer"
+                  title="Rotate 180°"
+                >
+                  <span>180°</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { rotation: 0 })}
+                  className={`py-1 px-1 border rounded font-medium flex items-center justify-center shadow-2xs transition-colors cursor-pointer ${
+                    !selectedElem.rotation || selectedElem.rotation === 0
+                      ? 'bg-brand-50 border-brand-300 text-brand-700 font-bold'
+                      : 'bg-white border-surface-300 hover:border-brand-500 text-surface-700 hover:text-brand-600'
+                  }`}
+                  title="Reset to 0°"
+                >
+                  <span>Reset 0°</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Flip Horizontal & Flip Vertical */}
+            <div className="pt-1.5 border-t border-surface-200 grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => updateElement(selectedElem.id, { flipX: !selectedElem.flipX })}
+                className={`py-1.5 px-2 rounded text-[10px] font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                  selectedElem.flipX
+                    ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                    : 'bg-white border-surface-300 text-surface-700 hover:border-brand-400 hover:text-brand-600'
+                }`}
+                title="Flip Layer Horizontally"
+              >
+                <FlipHorizontal className="w-3.5 h-3.5" />
+                <span>Flip Horizontal</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => updateElement(selectedElem.id, { flipY: !selectedElem.flipY })}
+                className={`py-1.5 px-2 rounded text-[10px] font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                  selectedElem.flipY
+                    ? 'bg-brand-600 text-white border-brand-600 shadow-xs'
+                    : 'bg-white border-surface-300 text-surface-700 hover:border-brand-400 hover:text-brand-600'
+                }`}
+                title="Flip Layer Vertically"
+              >
+                <FlipVertical className="w-3.5 h-3.5" />
+                <span>Flip Vertical</span>
+              </button>
             </div>
           </div>
 
@@ -1448,6 +1569,265 @@ export const PropertiesSidebar: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Photoshop Character Transform & Text Stretch Panel */}
+            <div className="p-3 bg-purple-50/70 rounded-lg border border-purple-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-purple-950 text-[11px] flex items-center gap-1.5 uppercase tracking-wider">
+                  <Sliders className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Photoshop Text Stretch & Transform</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      scaleX: 100,
+                      scaleY: 100,
+                      skewX: 0,
+                      letterSpacing: 0,
+                    })
+                  }
+                  className="text-[10px] text-purple-700 hover:text-purple-900 font-semibold underline cursor-pointer"
+                  title="Reset text stretch, skew, and letter spacing to defaults"
+                >
+                  Reset Defaults
+                </button>
+              </div>
+
+              {/* 1. Horizontal Scale (Text Stretch Width) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900 flex items-center gap-1">
+                    <span>Horizontal Scale (Stretch Width)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="30"
+                      max="300"
+                      step="5"
+                      value={selectedElem.scaleX ?? 100}
+                      onChange={(e) => updateElement(selectedElem.id, { scaleX: Math.max(30, Math.min(300, Number(e.target.value))) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">%</span>
+                  </div>
+                </div>
+
+                {/* Slider */}
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="5"
+                  value={selectedElem.scaleX ?? 100}
+                  onChange={(e) => updateElement(selectedElem.id, { scaleX: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                {/* Quick Presets */}
+                <div className="grid grid-cols-5 gap-1 text-[9px] font-mono">
+                  {[
+                    { label: '80%', val: 80, desc: 'Condensed' },
+                    { label: '100%', val: 100, desc: 'Normal' },
+                    { label: '120%', val: 120, desc: 'Stretch' },
+                    { label: '150%', val: 150, desc: 'Wide' },
+                    { label: '200%', val: 200, desc: 'Ultra' },
+                  ].map((p) => (
+                    <button
+                      key={p.val}
+                      type="button"
+                      onClick={() => updateElement(selectedElem.id, { scaleX: p.val })}
+                      className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                        (selectedElem.scaleX ?? 100) === p.val
+                          ? 'bg-purple-600 text-white font-bold border-purple-600 shadow-2xs'
+                          : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                      }`}
+                      title={`${p.label} - ${p.desc}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Vertical Scale (Text Stretch Height) */}
+              <div className="space-y-1.5 pt-2 border-t border-purple-200/70">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900 flex items-center gap-1">
+                    <span>Vertical Scale (Stretch Height)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="30"
+                      max="300"
+                      step="5"
+                      value={selectedElem.scaleY ?? 100}
+                      onChange={(e) => updateElement(selectedElem.id, { scaleY: Math.max(30, Math.min(300, Number(e.target.value))) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">%</span>
+                  </div>
+                </div>
+
+                {/* Slider */}
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="5"
+                  value={selectedElem.scaleY ?? 100}
+                  onChange={(e) => updateElement(selectedElem.id, { scaleY: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                {/* Quick Presets */}
+                <div className="grid grid-cols-5 gap-1 text-[9px] font-mono">
+                  {[
+                    { label: '80%', val: 80, desc: 'Squashed' },
+                    { label: '100%', val: 100, desc: 'Normal' },
+                    { label: '120%', val: 120, desc: 'Tall' },
+                    { label: '150%', val: 150, desc: 'High' },
+                    { label: '200%', val: 200, desc: 'Ultra Tall' },
+                  ].map((p) => (
+                    <button
+                      key={p.val}
+                      type="button"
+                      onClick={() => updateElement(selectedElem.id, { scaleY: p.val })}
+                      className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                        (selectedElem.scaleY ?? 100) === p.val
+                          ? 'bg-purple-600 text-white font-bold border-purple-600 shadow-2xs'
+                          : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                      }`}
+                      title={`${p.label} - ${p.desc}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Character Tracking / Letter Spacing */}
+              <div className="space-y-1.5 pt-2 border-t border-purple-200/70">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900">
+                    Character Tracking (Letter Spacing)
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="-5"
+                      max="30"
+                      step="0.5"
+                      value={selectedElem.letterSpacing ?? 0}
+                      onChange={(e) => updateElement(selectedElem.id, { letterSpacing: Number(e.target.value) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">px</span>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min="-3"
+                  max="15"
+                  step="0.5"
+                  value={selectedElem.letterSpacing ?? 0}
+                  onChange={(e) => updateElement(selectedElem.id, { letterSpacing: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                  {[
+                    { label: '-1px', val: -1 },
+                    { label: '0px', val: 0 },
+                    { label: '+2px', val: 2 },
+                    { label: '+4px', val: 4 },
+                  ].map((p) => (
+                    <button
+                      key={p.val}
+                      type="button"
+                      onClick={() => updateElement(selectedElem.id, { letterSpacing: p.val })}
+                      className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                        (selectedElem.letterSpacing ?? 0) === p.val
+                          ? 'bg-purple-600 text-white font-bold border-purple-600 shadow-2xs'
+                          : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Photoshop Faux Italic / Skew Slant */}
+              <div className="space-y-1.5 pt-2 border-t border-purple-200/70">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900">
+                    Faux Italic / Horizontal Slant (Skew)
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="-45"
+                      max="45"
+                      step="1"
+                      value={selectedElem.skewX ?? 0}
+                      onChange={(e) => updateElement(selectedElem.id, { skewX: Number(e.target.value) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">°</span>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min="-30"
+                  max="30"
+                  step="1"
+                  value={selectedElem.skewX ?? 0}
+                  onChange={(e) => updateElement(selectedElem.id, { skewX: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                <div className="grid grid-cols-3 gap-1 text-[9px]">
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewX: 0 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      (!selectedElem.skewX || selectedElem.skewX === 0)
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Normal (0°)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewX: 12 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.skewX === 12
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Italic (12°)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewX: -12 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.skewX === -12
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Backslant (-12°)
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Photoshop Text Shadow Section */}

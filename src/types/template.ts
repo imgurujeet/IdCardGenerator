@@ -36,6 +36,12 @@ export interface BaseElement {
   width: number;        // mm
   height: number;       // mm
   rotation: number;     // degrees (0-360)
+  scaleX?: number;      // horizontal scale / stretch % (default: 100)
+  scaleY?: number;      // vertical scale / stretch % (default: 100)
+  skewX?: number;       // horizontal slant in degrees (-45 to 45)
+  skewY?: number;       // vertical slant in degrees (-45 to 45)
+  flipX?: boolean;      // flip horizontally
+  flipY?: boolean;      // flip vertically
   opacity: number;      // 0.0 - 1.0
   locked: boolean;
   visible: boolean;
