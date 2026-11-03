@@ -200,14 +200,18 @@ async function renderElement(
       // Convert mm font size to pixels for canvas
       const fontSizePx = mmToPx(effectiveFontSizeMm, dpi);
       const fontStyle = elem.fontStyle === 'italic' ? 'italic' : 'normal';
-      const fontWeight =
-        elem.fontWeight === 'bold'
-          ? '700'
-          : elem.fontWeight === 'semibold'
-          ? '600'
-          : elem.fontWeight === 'medium'
-          ? '500'
-          : '400';
+      const weightMap: Record<string, string> = {
+        thin: '100',
+        light: '300',
+        normal: '400',
+        medium: '500',
+        semibold: '600',
+        bold: '700',
+        extrabold: '800',
+        black: '900',
+      };
+      const fontWeight = weightMap[String(elem.fontWeight)] || (typeof elem.fontWeight === 'number' ? String(elem.fontWeight) : '400');
+      const fontVariant = elem.smallCaps ? 'small-caps ' : '';
 
       // CRITICAL: Clip to bounding box so text never overflows, matching CSS overflow-hidden
       ctx.save();
@@ -215,7 +219,7 @@ async function renderElement(
       ctx.rect(x, y, w, h);
       ctx.clip();
 
-      ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
+      ctx.font = `${fontStyle} ${fontVariant}${fontWeight} ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
       ctx.fillStyle = elem.color || '#000000';
       ctx.textBaseline = 'middle';
 
@@ -286,6 +290,11 @@ async function renderElement(
         blockTop = y + (h - totalBlockHeightPx) / 2;
       }
 
+      // Photoshop Baseline Shift (raise or lower baseline in mm)
+      if (elem.baselineShift) {
+        blockTop -= mmToPx(elem.baselineShift, dpi);
+      }
+
       // Apply Photoshop-style text transform (horizontal scale, vertical scale, slant skew)
       const hasTextTransform = scaleX !== 1 || scaleY !== 1 || skewX !== 0 || skewY !== 0;
       if (hasTextTransform) {
@@ -311,18 +320,26 @@ async function renderElement(
         ctx.translate(-originX, -originY);
       }
 
+      // Calculate effective stroke / faux bold thickness
+      const fauxBoldWidth = elem.fauxBold ? Math.max(0.12, elem.fontSize * 0.035) : 0;
+      const effectiveStrokeWidth = (elem.textStrokeWidth || 0) + fauxBoldWidth;
+      const effectiveStrokeColor = elem.textStrokeColor || (elem.fauxBold ? (elem.color && elem.color !== 'transparent' ? elem.color : '#000000') : undefined);
+
       lines.forEach((line, idx) => {
         // Center of this line's box in Canvas, matching CSS line-box vertical centering
         const lineCenterY = blockTop + idx * lineHeightPx + lineHeightPx / 2;
 
-        // Draw text stroke if configured
-        if (elem.textStrokeColor && elem.textStrokeWidth) {
-          ctx.strokeStyle = elem.textStrokeColor;
-          ctx.lineWidth = mmToPx(elem.textStrokeWidth, dpi);
+        // Draw text stroke if configured or faux bold
+        if (effectiveStrokeColor && effectiveStrokeWidth > 0) {
+          ctx.strokeStyle = effectiveStrokeColor;
+          ctx.lineWidth = mmToPx(effectiveStrokeWidth, dpi);
           ctx.strokeText(line, textX, lineCenterY);
         }
 
-        ctx.fillText(line, textX, lineCenterY);
+        // Draw fill text unless transparent (hollow text)
+        if (elem.color && elem.color !== 'transparent') {
+          ctx.fillText(line, textX, lineCenterY);
+        }
 
         // Draw Underline if enabled
         if (elem.underline) {
@@ -336,10 +353,29 @@ async function renderElement(
           }
           const underlineY = lineCenterY + activeFontPx * 0.42;
           ctx.beginPath();
-          ctx.strokeStyle = elem.color || '#000000';
+          ctx.strokeStyle = elem.color && elem.color !== 'transparent' ? elem.color : effectiveStrokeColor || '#000000';
           ctx.lineWidth = Math.max(1, activeFontPx * 0.08);
           ctx.moveTo(lineStartX, underlineY);
           ctx.lineTo(lineStartX + textW, underlineY);
+          ctx.stroke();
+        }
+
+        // Draw Strikethrough if enabled
+        if (elem.strikethrough) {
+          const textMetrics = ctx.measureText(line);
+          const textW = textMetrics.width;
+          let lineStartX = textX;
+          if (elem.textAlign === 'center') {
+            lineStartX = textX - textW / 2;
+          } else if (elem.textAlign === 'right') {
+            lineStartX = textX - textW;
+          }
+          const strikeY = lineCenterY;
+          ctx.beginPath();
+          ctx.strokeStyle = elem.color && elem.color !== 'transparent' ? elem.color : effectiveStrokeColor || '#000000';
+          ctx.lineWidth = Math.max(1, activeFontPx * 0.08);
+          ctx.moveTo(lineStartX, strikeY);
+          ctx.lineTo(lineStartX + textW, strikeY);
           ctx.stroke();
         }
       });

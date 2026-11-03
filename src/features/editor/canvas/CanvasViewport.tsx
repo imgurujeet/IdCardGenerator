@@ -431,9 +431,8 @@ export const CanvasViewport: React.FC = () => {
                   e.stopPropagation();
                   setSelectedElementId(elem.id);
                 }}
-                className={`absolute cursor-move group transition-[outline] ${
-                  isSelected ? 'outline outline-2 outline-brand-600' : 'hover:outline hover:outline-1 hover:outline-brand-400'
-                }`}
+                className={`absolute cursor-move group transition-[outline] ${isSelected ? 'outline outline-2 outline-brand-600' : 'hover:outline hover:outline-1 hover:outline-brand-400'
+                  }`}
                 style={{
                   left: `${x}px`,
                   top: `${y}px`,
@@ -552,11 +551,10 @@ export const CanvasViewport: React.FC = () => {
                           updateElement(elem.id, { flipX: !elem.flipX });
                         }}
                         title="Flip Layer Horizontally"
-                        className={`px-1.5 py-0.5 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${
-                          elem.flipX
+                        className={`px-1.5 py-0.5 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${elem.flipX
                             ? 'bg-brand-600 text-white font-bold'
                             : 'hover:bg-surface-800 text-surface-200 hover:text-white'
-                        }`}
+                          }`}
                       >
                         <FlipHorizontal className="w-3 h-3" />
                         <span>Flip</span>
@@ -572,11 +570,10 @@ export const CanvasViewport: React.FC = () => {
                               updateElement(elem.id, { autoFit: elem.autoFit === false ? true : false });
                             }}
                             title="Toggle Auto-Fit Text to Box"
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
-                              elem.autoFit !== false
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${elem.autoFit !== false
                                 ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
                                 : 'hover:bg-surface-800 text-surface-400'
-                            }`}
+                              }`}
                           >
                             <Sparkles className="w-3 h-3 text-emerald-400" />
                             <span>Auto-Fit {elem.autoFit !== false ? 'ON' : 'OFF'}</span>
@@ -772,21 +769,39 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
         ? `${mmToPx(elem.textShadow.offsetX, dpi)}px ${mmToPx(elem.textShadow.offsetY, dpi)}px ${mmToPx(elem.textShadow.blur, dpi)}px ${elem.textShadow.color}`
         : undefined;
 
-      const strokeStyle = elem.textStrokeColor && elem.textStrokeWidth
-        ? `${mmToPx(elem.textStrokeWidth, dpi)}px ${elem.textStrokeColor}`
-        : undefined;
-
       const vAlignClass = elem.verticalAlign === 'top' ? 'justify-start' : elem.verticalAlign === 'bottom' ? 'justify-end' : 'justify-center';
+
+      const weightMap: Record<string, number> = {
+        thin: 100,
+        light: 300,
+        normal: 400,
+        medium: 500,
+        semibold: 600,
+        bold: 700,
+        extrabold: 800,
+        black: 900,
+      };
+      const numericWeight = weightMap[String(elem.fontWeight)] || (typeof elem.fontWeight === 'number' ? elem.fontWeight : 400);
 
       const boxWidthPx = mmToPx(elem.width, dpi);
       // Use original configured font size (not auto-fitted) to determine single-line intent.
       // This must match what calculateAutoFitFontSizeMm uses internally (baseFontSizeMm * 1.4).
       const isSingleLine = elem.height < (elem.fontSize * 1.4) || elem.maxLines === 1;
-      const fontSpec = `${elem.fontStyle || 'normal'} ${
-        elem.fontWeight === 'bold' ? '700' : elem.fontWeight === 'semibold' ? '600' : elem.fontWeight === 'medium' ? 500 : 400
-      } ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
+      const fontSpec = `${elem.fontStyle || 'normal'} ${elem.smallCaps ? 'small-caps ' : ''}${numericWeight} ${fontSizePx}px "${elem.fontFamily || 'Inter'}", sans-serif`;
       const measureFn = createTextMeasureFn(fontSpec);
       const wrappedLines = isSingleLine ? [rawText] : wrapTextToLines(rawText, boxWidthPx, measureFn);
+
+      const fauxBoldWidth = elem.fauxBold ? Math.max(0.12, elem.fontSize * 0.035) : 0;
+      const effectiveStrokeWidth = (elem.textStrokeWidth || 0) + fauxBoldWidth;
+      const effectiveStrokeColor = elem.textStrokeColor || (elem.fauxBold ? (elem.color && elem.color !== 'transparent' ? elem.color : '#000000') : undefined);
+      const strokeStyle = effectiveStrokeColor && effectiveStrokeWidth > 0
+        ? `${mmToPx(effectiveStrokeWidth, dpi)}px ${effectiveStrokeColor}`
+        : undefined;
+
+      const textDecorations: string[] = [];
+      if (elem.underline) textDecorations.push('underline');
+      if (elem.strikethrough) textDecorations.push('line-through');
+      const textDecoration = textDecorations.length > 0 ? textDecorations.join(' ') : undefined;
 
       const transforms: string[] = [];
       if (scaleX !== 1 || scaleY !== 1) {
@@ -798,24 +813,31 @@ function renderEditorElement(elem: TemplateElement, record: Record<string, any>,
       if (skewY !== 0) {
         transforms.push(`skewY(${skewY}deg)`);
       }
+      if (elem.baselineShift) {
+        transforms.push(`translateY(-${mmToPx(elem.baselineShift, dpi)}px)`);
+      }
       const textTransformMatrix = transforms.length > 0 ? transforms.join(' ') : undefined;
 
       const originX = elem.textAlign === 'center' ? 'center' : elem.textAlign === 'right' ? 'right' : 'left';
       const originY = elem.verticalAlign === 'top' ? 'top' : elem.verticalAlign === 'bottom' ? 'bottom' : 'center';
 
+      const isTransparentFill = elem.color === 'transparent';
+
       return (
         <div
           className={`w-full h-full flex flex-col ${vAlignClass} overflow-hidden pointer-events-none select-none`}
           style={{
-            color: elem.color || '#000000',
+            color: isTransparentFill ? 'transparent' : elem.color || '#000000',
+            WebkitTextFillColor: isTransparentFill ? 'transparent' : undefined,
             fontFamily: `"${elem.fontFamily || 'Inter'}", sans-serif`,
             fontSize: `${fontSizePx}px`,
             lineHeight: lineHeightValue,
             letterSpacing: elem.letterSpacing ? `${elem.letterSpacing}px` : undefined,
-            fontWeight: elem.fontWeight === 'bold' ? 700 : elem.fontWeight === 'semibold' ? 600 : elem.fontWeight === 'medium' ? 500 : 400,
+            fontWeight: numericWeight,
             fontStyle: elem.fontStyle || 'normal',
+            fontVariant: elem.smallCaps ? 'small-caps' : undefined,
             textAlign: elem.textAlign || 'left',
-            textDecoration: elem.underline ? 'underline' : undefined,
+            textDecoration: textDecoration,
             textShadow: textShadowStyle,
             WebkitTextStroke: strokeStyle,
             transform: textTransformMatrix,

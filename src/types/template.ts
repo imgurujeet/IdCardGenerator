@@ -48,6 +48,8 @@ export interface BaseElement {
   zIndex: number;
 }
 
+export type FontWeight = 'thin' | 'light' | 'normal' | 'medium' | 'semibold' | 'bold' | 'extrabold' | 'black';
+
 export interface TextElement extends BaseElement {
   type: 'text' | 'dynamic-text';
   content: string;               // e.g. "STUDENT ID CARD" or dynamic "{{student_name}}"
@@ -55,13 +57,17 @@ export interface TextElement extends BaseElement {
   fallback?: string;             // fallback text if record value is missing
   fontFamily: string;
   fontSize: number;              // pt or mm
-  fontWeight: 'normal' | 'medium' | 'semibold' | 'bold';
+  fontWeight: FontWeight | string;
   fontStyle: 'normal' | 'italic';
   textAlign: 'left' | 'center' | 'right' | 'justify';
   verticalAlign?: 'top' | 'middle' | 'bottom';
   color: string;                 // hex
   letterSpacing?: number;
   lineHeight?: number;
+  baselineShift?: number;        // mm: shift baseline up (+) or down (-)
+  fauxBold?: boolean;            // Photoshop faux bold
+  smallCaps?: boolean;           // Photoshop small caps
+  strikethrough?: boolean;       // Photoshop strikethrough
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   underline?: boolean;
   textShadow?: TextShadowConfig;

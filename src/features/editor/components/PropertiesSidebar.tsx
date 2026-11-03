@@ -30,6 +30,9 @@ import {
   RotateCcw,
   FlipHorizontal,
   FlipVertical,
+  Sun,
+  Strikethrough as StrikethroughIcon,
+  Type,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { resolveElementText, DATE_FORMAT_OPTIONS } from '../../../lib/utils';
@@ -478,6 +481,62 @@ export const PropertiesSidebar: React.FC = () => {
                 />
                 <span className="text-[10px] text-surface-400">mm</span>
               </div>
+            </div>
+          </div>
+
+          {/* Layer Opacity / Transparency */}
+          <div className="mt-2.5 p-2 bg-surface-50 rounded-lg border border-surface-200 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <label className="text-[11px] font-semibold text-surface-700 flex items-center gap-1.5">
+                <Sun className="w-3.5 h-3.5 text-amber-500" />
+                <span>Layer Opacity / Transparency</span>
+              </label>
+              <div className="flex items-center gap-1 font-mono">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={Math.round((selectedElem.opacity ?? 1) * 100)}
+                  onChange={(e) => {
+                    const pct = Math.max(0, Math.min(100, Number(e.target.value)));
+                    updateElement(selectedElem.id, { opacity: Number((pct / 100).toFixed(2)) });
+                  }}
+                  className="w-12 px-1 py-0.5 text-right font-mono text-xs bg-white border border-surface-300 rounded outline-none font-bold text-surface-800"
+                />
+                <span className="text-[10px] text-surface-500">%</span>
+              </div>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={Math.round((selectedElem.opacity ?? 1) * 100)}
+              onChange={(e) => updateElement(selectedElem.id, { opacity: Number((Number(e.target.value) / 100).toFixed(2)) })}
+              className="w-full accent-brand-600 cursor-pointer h-1.5 bg-surface-200 rounded-lg appearance-none"
+            />
+            <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+              {[
+                { label: '25%', val: 0.25, desc: 'Watermark' },
+                { label: '50%', val: 0.5, desc: 'Ghost' },
+                { label: '75%', val: 0.75, desc: 'Subtle' },
+                { label: '100%', val: 1.0, desc: 'Solid' },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => updateElement(selectedElem.id, { opacity: p.val })}
+                  className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                    (selectedElem.opacity ?? 1) === p.val
+                      ? 'bg-brand-600 text-white font-bold border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-100'
+                  }`}
+                  title={`${p.label} - ${p.desc}`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1328,74 +1387,253 @@ export const PropertiesSidebar: React.FC = () => {
               )}
             </div>
 
-            {/* Formatting Row: Bold, Italic, Underline, Alignment, Color */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center border border-surface-300 rounded p-0.5 bg-surface-50">
+            {/* Photoshop Character Buttons: Bold, Faux Bold, Italic, Underline, Strike, All-Caps, Small-Caps, Hollow */}
+            <div className="space-y-2 p-2.5 bg-surface-50 rounded-lg border border-surface-200">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="font-semibold text-surface-700 uppercase tracking-wider flex items-center gap-1">
+                  <Type className="w-3.5 h-3.5 text-brand-600" />
+                  <span>Photoshop Character Styles</span>
+                </span>
+                <span className="text-[9px] font-mono text-surface-500">
+                  {selectedElem.color === 'transparent' ? 'Hollow Text' : selectedElem.fontWeight || 'normal'}
+                </span>
+              </div>
+
+              {/* Icon Buttons Toolbar */}
+              <div className="flex items-center flex-wrap gap-1">
+                {/* Bold Toggle */}
                 <button
+                  type="button"
                   onClick={() =>
                     updateElement(selectedElem.id, {
-                      fontWeight: selectedElem.fontWeight === 'bold' ? 'normal' : 'bold',
+                      fontWeight: selectedElem.fontWeight === 'bold' || selectedElem.fontWeight === '700' ? 'normal' : 'bold',
                     })
                   }
-                  title="Bold"
-                  className={`p-1.5 rounded ${selectedElem.fontWeight === 'bold' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
+                  title="Bold (700)"
+                  className={`p-1.5 rounded text-xs font-bold border transition-colors ${
+                    selectedElem.fontWeight === 'bold' || selectedElem.fontWeight === '700'
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
                 >
                   <Bold className="w-3.5 h-3.5" />
                 </button>
+
+                {/* Photoshop Faux Bold */}
                 <button
+                  type="button"
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      fauxBold: !selectedElem.fauxBold,
+                    })
+                  }
+                  title="Photoshop Faux Bold (Adds synthetic thickness to any font)"
+                  className={`px-1.5 py-1 rounded text-[10px] font-black border transition-colors ${
+                    selectedElem.fauxBold
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                      : 'bg-white text-purple-800 border-purple-300 hover:bg-purple-50'
+                  }`}
+                >
+                  <span className="font-serif">𝐓+</span>
+                </button>
+
+                {/* Italic */}
+                <button
+                  type="button"
                   onClick={() =>
                     updateElement(selectedElem.id, {
                       fontStyle: selectedElem.fontStyle === 'italic' ? 'normal' : 'italic',
                     })
                   }
                   title="Italic"
-                  className={`p-1.5 rounded ${selectedElem.fontStyle === 'italic' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
+                  className={`p-1.5 rounded text-xs border transition-colors ${
+                    selectedElem.fontStyle === 'italic'
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
                 >
                   <Italic className="w-3.5 h-3.5" />
                 </button>
+
+                {/* Underline */}
                 <button
+                  type="button"
                   onClick={() =>
                     updateElement(selectedElem.id, {
                       underline: !selectedElem.underline,
                     })
                   }
                   title="Underline"
-                  className={`p-1.5 rounded ${selectedElem.underline ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
+                  className={`p-1.5 rounded text-xs border transition-colors ${
+                    selectedElem.underline
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
                 >
                   <UnderlineIcon className="w-3.5 h-3.5" />
                 </button>
+
+                {/* Strikethrough */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      strikethrough: !selectedElem.strikethrough,
+                    })
+                  }
+                  title="Strikethrough"
+                  className={`p-1.5 rounded text-xs border transition-colors ${
+                    selectedElem.strikethrough
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
+                >
+                  <StrikethroughIcon className="w-3.5 h-3.5" />
+                </button>
+
+                {/* All Caps (TT) */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      textTransform: selectedElem.textTransform === 'uppercase' ? 'none' : 'uppercase',
+                    })
+                  }
+                  title="All Caps (UPPERCASE)"
+                  className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors ${
+                    selectedElem.textTransform === 'uppercase'
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
+                >
+                  TT
+                </button>
+
+                {/* Small Caps (Tᴛ) */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateElement(selectedElem.id, {
+                      smallCaps: !selectedElem.smallCaps,
+                    })
+                  }
+                  title="Small Caps (Tᴛ)"
+                  className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors ${
+                    selectedElem.smallCaps
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
+                >
+                  Tᴛ
+                </button>
+
+                {/* Hollow / Outline Only (Transparent Text Fill) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const isTrans = selectedElem.color === 'transparent';
+                    if (isTrans) {
+                      updateElement(selectedElem.id, { color: '#000000' });
+                    } else {
+                      updateElement(selectedElem.id, {
+                        color: 'transparent',
+                        textStrokeWidth: selectedElem.textStrokeWidth || 0.3,
+                        textStrokeColor: selectedElem.textStrokeColor || '#000000',
+                      });
+                    }
+                  }}
+                  title="Hollow / Outline Only (Transparent Text Fill)"
+                  className={`px-1.5 py-1 rounded text-[10px] font-semibold border transition-colors flex items-center gap-1 ${
+                    selectedElem.color === 'transparent'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                      : 'bg-white text-surface-700 border-surface-300 hover:bg-surface-100'
+                  }`}
+                >
+                  <span>🔲 Hollow</span>
+                </button>
               </div>
 
-              <div className="flex items-center border border-surface-300 rounded p-0.5 bg-surface-50">
-                <button
-                  onClick={() => updateElement(selectedElem.id, { textAlign: 'left' })}
-                  className={`p-1.5 rounded ${selectedElem.textAlign === 'left' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
-                >
-                  <AlignLeft className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => updateElement(selectedElem.id, { textAlign: 'center' })}
-                  className={`p-1.5 rounded ${selectedElem.textAlign === 'center' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
-                >
-                  <AlignCenter className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => updateElement(selectedElem.id, { textAlign: 'right' })}
-                  className={`p-1.5 rounded ${selectedElem.textAlign === 'right' ? 'bg-white shadow-sm text-brand-600' : 'text-surface-600'}`}
-                >
-                  <AlignRight className="w-3.5 h-3.5" />
-                </button>
+              {/* Font Weight (Thickness) Selector & Presets */}
+              <div className="pt-1.5 border-t border-surface-200">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] text-surface-600 font-medium">Font Thickness / Weight</label>
+                  <select
+                    value={selectedElem.fontWeight || 'normal'}
+                    onChange={(e) => updateElement(selectedElem.id, { fontWeight: e.target.value as any })}
+                    className="px-2 py-0.5 bg-white border border-surface-300 rounded text-xs outline-none focus:border-brand-500 font-medium"
+                  >
+                    <option value="thin">Thin (100)</option>
+                    <option value="light">Light (300)</option>
+                    <option value="normal">Regular (400)</option>
+                    <option value="medium">Medium (500)</option>
+                    <option value="semibold">SemiBold (600)</option>
+                    <option value="bold">Bold (700)</option>
+                    <option value="extrabold">ExtraBold (800)</option>
+                    <option value="black">Black / Heavy (900)</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-5 gap-1 text-[9px] font-mono">
+                  {[
+                    { label: 'Light', val: 'light' },
+                    { label: 'Normal', val: 'normal' },
+                    { label: 'Semi', val: 'semibold' },
+                    { label: 'Bold', val: 'bold' },
+                    { label: 'Black', val: 'black' },
+                  ].map((w) => (
+                    <button
+                      key={w.val}
+                      type="button"
+                      onClick={() => updateElement(selectedElem.id, { fontWeight: w.val as any })}
+                      className={`py-0.5 rounded border transition-colors ${
+                        selectedElem.fontWeight === w.val
+                          ? 'bg-brand-600 text-white font-bold border-brand-600'
+                          : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-100'
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Text Color */}
-              <div className="flex items-center gap-1.5 border border-surface-300 rounded px-2 py-1 bg-surface-50">
-                <input
-                  type="color"
-                  value={selectedElem.color || '#000000'}
-                  onChange={(e) => updateElement(selectedElem.id, { color: e.target.value })}
-                  className="w-4 h-4 rounded cursor-pointer border-0 p-0"
-                />
-                <span className="font-mono text-[10px] uppercase text-surface-600">{selectedElem.color || '#000'}</span>
+              {/* Alignment & Text Color */}
+              <div className="pt-1.5 border-t border-surface-200 flex items-center justify-between">
+                <div className="flex items-center border border-surface-300 rounded p-0.5 bg-white">
+                  <button
+                    onClick={() => updateElement(selectedElem.id, { textAlign: 'left' })}
+                    className={`p-1.5 rounded ${selectedElem.textAlign === 'left' ? 'bg-surface-100 shadow-sm text-brand-600' : 'text-surface-600'}`}
+                    title="Align Left"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => updateElement(selectedElem.id, { textAlign: 'center' })}
+                    className={`p-1.5 rounded ${selectedElem.textAlign === 'center' ? 'bg-surface-100 shadow-sm text-brand-600' : 'text-surface-600'}`}
+                    title="Align Center"
+                  >
+                    <AlignCenter className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => updateElement(selectedElem.id, { textAlign: 'right' })}
+                    className={`p-1.5 rounded ${selectedElem.textAlign === 'right' ? 'bg-surface-100 shadow-sm text-brand-600' : 'text-surface-600'}`}
+                    title="Align Right"
+                  >
+                    <AlignRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 border border-surface-300 rounded px-2 py-1 bg-white">
+                  <label className="text-[9px] text-surface-500 font-medium">Color</label>
+                  <input
+                    type="color"
+                    value={selectedElem.color && selectedElem.color !== 'transparent' ? selectedElem.color : '#000000'}
+                    onChange={(e) => updateElement(selectedElem.id, { color: e.target.value })}
+                    className="w-4 h-4 rounded cursor-pointer border-0 p-0"
+                  />
+                  <span className="font-mono text-[10px] uppercase text-surface-600">
+                    {selectedElem.color === 'transparent' ? 'Hollow' : selectedElem.color || '#000'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1585,7 +1823,9 @@ export const PropertiesSidebar: React.FC = () => {
                       scaleX: 100,
                       scaleY: 100,
                       skewX: 0,
+                      skewY: 0,
                       letterSpacing: 0,
+                      baselineShift: 0,
                     })
                   }
                   className="text-[10px] text-purple-700 hover:text-purple-900 font-semibold underline cursor-pointer"
@@ -1828,6 +2068,142 @@ export const PropertiesSidebar: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* 5. Photoshop Vertical Slant (Skew Y) */}
+              <div className="space-y-1.5 pt-2 border-t border-purple-200/70">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900">
+                    Vertical Slant (Skew Y)
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="-45"
+                      max="45"
+                      step="1"
+                      value={selectedElem.skewY ?? 0}
+                      onChange={(e) => updateElement(selectedElem.id, { skewY: Number(e.target.value) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">°</span>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min="-30"
+                  max="30"
+                  step="1"
+                  value={selectedElem.skewY ?? 0}
+                  onChange={(e) => updateElement(selectedElem.id, { skewY: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                <div className="grid grid-cols-3 gap-1 text-[9px]">
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewY: 0 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      (!selectedElem.skewY || selectedElem.skewY === 0)
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Level (0°)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewY: 10 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.skewY === 10
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Up (+10°)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { skewY: -10 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.skewY === -10
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Down (-10°)
+                  </button>
+                </div>
+              </div>
+
+              {/* 6. Photoshop Baseline Shift */}
+              <div className="space-y-1.5 pt-2 border-t border-purple-200/70">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="text-[11px] font-semibold text-purple-900 flex items-center gap-1">
+                    <span>Baseline Shift (Raise / Lower)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="-10"
+                      max="10"
+                      step="0.2"
+                      value={selectedElem.baselineShift ?? 0}
+                      onChange={(e) => updateElement(selectedElem.id, { baselineShift: Number(e.target.value) })}
+                      className="w-14 px-1.5 py-0.5 text-right font-mono text-xs bg-white border border-purple-300 rounded outline-none focus:border-purple-500 font-bold text-purple-950"
+                    />
+                    <span className="text-[10px] font-mono text-purple-600">mm</span>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min="-5"
+                  max="5"
+                  step="0.2"
+                  value={selectedElem.baselineShift ?? 0}
+                  onChange={(e) => updateElement(selectedElem.id, { baselineShift: Number(e.target.value) })}
+                  className="w-full accent-purple-600 cursor-pointer h-1.5 bg-purple-200 rounded-lg appearance-none"
+                />
+
+                <div className="grid grid-cols-3 gap-1 text-[9px]">
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { baselineShift: -1.5 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.baselineShift === -1.5
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                    title="Subscript baseline shift (-1.5mm)"
+                  >
+                    Sub (-1.5mm)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { baselineShift: 0 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      (!selectedElem.baselineShift || selectedElem.baselineShift === 0)
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    Normal (0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateElement(selectedElem.id, { baselineShift: 1.5 })}
+                    className={`py-0.5 rounded border transition-colors cursor-pointer ${
+                      selectedElem.baselineShift === 1.5
+                        ? 'bg-purple-600 text-white font-bold border-purple-600'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                    title="Superscript baseline shift (+1.5mm)"
+                  >
+                    Super (+1.5mm)
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Photoshop Text Shadow Section */}
@@ -1964,11 +2340,36 @@ export const PropertiesSidebar: React.FC = () => {
                     type="range"
                     min="0"
                     max="3"
-                    step="0.1"
+                    step="0.05"
                     value={selectedElem.textStrokeWidth || 0}
                     onChange={(e) => updateElement(selectedElem.id, { textStrokeWidth: Number(e.target.value) })}
                     className="w-full accent-brand-600 cursor-pointer"
                   />
+
+                  {/* Quick Stroke Thickness Presets */}
+                  <div className="grid grid-cols-5 gap-1 text-[9px] font-mono">
+                    {[
+                      { label: '0.15mm', val: 0.15, desc: 'Hairline' },
+                      { label: '0.3mm', val: 0.3, desc: 'Thin' },
+                      { label: '0.5mm', val: 0.5, desc: 'Medium' },
+                      { label: '0.8mm', val: 0.8, desc: 'Thick' },
+                      { label: '1.2mm', val: 1.2, desc: 'Heavy' },
+                    ].map((p) => (
+                      <button
+                        key={p.val}
+                        type="button"
+                        onClick={() => updateElement(selectedElem.id, { textStrokeWidth: p.val })}
+                        className={`py-0.5 rounded border transition-colors ${
+                          selectedElem.textStrokeWidth === p.val
+                            ? 'bg-brand-600 text-white font-bold border-brand-600'
+                            : 'bg-white text-surface-700 border-surface-200 hover:bg-surface-100'
+                        }`}
+                        title={`${p.label} - ${p.desc}`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

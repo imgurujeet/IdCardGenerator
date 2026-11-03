@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TemplateDocument, TemplateElement, TextElement } from '../../../types/template';
+import { TemplateDocument, TemplateElement, TextElement, FontWeight } from '../../../types/template';
 import { generateId } from '../../../lib/utils';
 import { POPULAR_GOOGLE_FONTS } from '../../../lib/fontLoader';
 
@@ -288,7 +288,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let newHeight = 5.0;
     let fontFamily = 'Inter';
     let fontSize = 3.5;
-    let fontWeight: 'bold' | 'normal' | 'medium' | 'semibold' = 'normal';
+    let fontWeight: FontWeight | string = 'normal';
     let fontStyle: 'normal' | 'italic' = 'normal';
     let color = '#000000';
     let textAlign: 'left' | 'center' | 'right' = 'left';
